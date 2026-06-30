@@ -1,0 +1,6 @@
+.hero-small {padding: 1.15rem 1.4rem;border-radius: 18px;background: linear-gradient(135deg, #154a7d, #147d67);color: white;margin-bottom: 1rem;}
+.hero-small h2 {margin: 0;font-size: 1.8rem;}
+.hero-small p {margin: 0.35rem 0 0 0;}
+[data-testid="stSidebar"] {background-color: #f4f7f9;}
+div[data-testid="metric-container"] {background: white;border: 1px solid rgba(0,0,0,0.08);padding: 1rem;border-radius: 14px;}
+.footer {text-align: center;color: #6b7280;padding: 1rem;}

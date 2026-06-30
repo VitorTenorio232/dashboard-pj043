@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+import ee
+import folium
+from modules.products import period_image, PRODUCTS
+from modules.regions import get_region, map_center
+
+def make_map(product_name: str, start: str, end: str, region_name: str, bounds=None):
+    region = get_region(region_name, bounds)
+    image = period_image(product_name, start, end, region)
+    product = PRODUCTS[product_name]
+    center, zoom = map_center(region_name)
+    m = geemap.Map(center=center, zoom=zoom, tiles=None)
+    m.add_basemap('CartoDB.DarkMatter')
+    m.addLayer(image, product.vis, f'{product.label} — {start} a {end}')
+    m.addLayer(region, {'color':'white'}, 'Região')
+    m.add_colorbar(vis_params=product.vis, label=product.unit)
+    return m, image, region
+
+def example_home_map():
+    region = get_region('Brasil')
+    image = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_CO').filterDate('2024-08-01','2024-08-31').filterBounds(region).select('CO_column_number_density').mean().multiply(2241.15).rename('CO_DU').clip(region)
+    vis = {'min':0,'max':120,'palette':['1d4ed8','38bdf8','facc15','f97316','dc2626']}
+    m = geemap.Map(center=[-15,-55], zoom=4, tiles=None)
+    m.add_basemap('CartoDB.DarkMatter')
+    m.addLayer(image, vis, 'CO médio — ago/2024')
+    m.addLayer(region, {'color':'white'}, 'Brasil')
+    m.add_colorbar(vis_params=vis, label='DU')
+    return m
