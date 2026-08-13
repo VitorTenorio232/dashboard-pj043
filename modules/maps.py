@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Mapas Folium + Earth Engine, sem dependência do geemap.
-
-V3.4:
-- Mapa base reduzido para: Claro, Escuro e Satélite.
-- Chuva usa máximo calculado a partir do próprio dado no recorte.
-- Legenda contínua menor e mais otimizada.
-- PNG/JPEG com shapes continuam funcionando.
-- Mapa rápido da home: acumulado mensal de Queimadas na América do Sul.
-"""
+"""Mapas Folium + Earth Engine do SIMQA."""
 
 from __future__ import annotations
 
@@ -17,7 +9,7 @@ import folium
 import streamlit as st
 from streamlit_folium import st_folium
 
-from modules.products import period_image, PRODUCTS
+from modules.products import LANDCOVER_PALETTE, LANDCOVER_VALUES, PRODUCTS, period_image
 from modules.regions import (
     get_region,
     map_center,
@@ -27,11 +19,8 @@ from modules.regions import (
     selected_region_fc,
 )
 
-BASEMAPS = [
-    "Claro",
-    "Escuro",
-    "Satélite",
-]
+
+BASEMAPS = ["Claro", "Escuro", "Satélite"]
 
 
 def _add_ee_layer(self, ee_object, vis_params: dict, name: str) -> None:
@@ -51,19 +40,13 @@ def _ensure_folium_ee_method() -> None:
 
 
 def _base_map(center: list[float], zoom: int, basemap: str) -> folium.Map:
-    """Cria mapa base com apenas três opções limpas."""
     m = folium.Map(location=center, zoom_start=zoom, tiles=None, control_scale=True)
 
-    if basemap in {"Escuro", "Escuro - CartoDB Dark Matter"}:
-        folium.TileLayer(
-            tiles="CartoDB dark_matter",
-            name="Escuro",
-            overlay=False,
-            control=True,
-        ).add_to(m)
+    if basemap == "Escuro":
+        folium.TileLayer(tiles="CartoDB dark_matter", name="Escuro", overlay=False, control=True).add_to(m)
         return m
 
-    if basemap in {"Satélite", "Satélite Esri"}:
+    if basemap == "Satélite":
         folium.TileLayer(
             tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
             attr="Tiles © Esri",
@@ -73,26 +56,22 @@ def _base_map(center: list[float], zoom: int, basemap: str) -> folium.Map:
         ).add_to(m)
         return m
 
-    folium.TileLayer(
-        tiles="OpenStreetMap",
-        name="Claro",
-        overlay=False,
-        control=True,
-    ).add_to(m)
+    folium.TileLayer(tiles="OpenStreetMap", name="Claro", overlay=False, control=True).add_to(m)
     return m
 
 
 def _paint_outline(feature_collection, color: str, width: int):
-    return ee.Image().byte().paint(
-        featureCollection=feature_collection,
-        color=1,
-        width=width,
-    ), {"palette": [color], "min": 1, "max": 1}
+    return ee.Image().byte().paint(featureCollection=feature_collection, color=1, width=width), {
+        "palette": [color],
+        "min": 1,
+        "max": 1,
+    }
 
 
 def _outline_image(feature_collection, color: str = "111111", width: int = 2) -> ee.Image:
-    line = ee.Image().byte().paint(featureCollection=feature_collection, color=1, width=width)
-    return line.visualize(palette=[color], min=1, max=1)
+    return ee.Image().byte().paint(featureCollection=feature_collection, color=1, width=width).visualize(
+        palette=[color], min=1, max=1
+    )
 
 
 def _add_outline(m: folium.Map, feature_collection, name: str, color: str, width: int) -> None:
@@ -129,18 +108,20 @@ def _add_overlays(
         _add_outline(m, selected_region_fc(region), "Região selecionada", "111111", 3)
 
     if "Município/Distrito selecionado" in overlays and country_name and admin1_name and city_name:
-        _add_outline(m, selected_city_fc(country_name, admin1_name, city_name), f"Município/Distrito: {city_name}", "dc2626", 3)
+        _add_outline(
+            m,
+            selected_city_fc(country_name, admin1_name, city_name),
+            f"Município/Distrito: {city_name}",
+            "dc2626",
+            3,
+        )
 
 
 def _dynamic_vis(product_name: str, image: ee.Image, region) -> dict:
-    """Ajusta parâmetros de visualização quando necessário.
-
-    Para CHIRPS, o máximo passa a ser calculado pelo próprio dado no recorte.
-    """
     product = PRODUCTS[product_name]
     vis = dict(product.vis)
 
-    if product_name == "Precipitação CHIRPS":
+    if product.kind in {"precip_sum", "precip_era5land_sum"} or product.kind.startswith("fire_"):
         try:
             stats = image.reduceRegion(
                 reducer=ee.Reducer.max(),
@@ -150,15 +131,42 @@ def _dynamic_vis(product_name: str, image: ee.Image, region) -> dict:
                 bestEffort=True,
             ).getInfo()
             value = stats.get(product.out_band)
-            if value is not None:
-                max_value = float(value)
-                if max_value > 0:
-                    vis["min"] = 0
-                    vis["max"] = round(max_value, 2)
+            if value is not None and float(value) > 0:
+                maximum = float(value)
+                vis["min"] = 0
+                vis["max"] = max(1, round(maximum, 2))
         except Exception:
             pass
 
     return vis
+
+
+def _display_image_and_vis(product_name: str, image: ee.Image, region) -> tuple[ee.Image, dict]:
+    """Retorna a imagem/visualização usada apenas no mapa.
+
+    Para cobertura do solo, os códigos originais são esparsos (0, 20, 30, ..., 200).
+    Uma paleta contínua aplicada diretamente de 0 a 200 interpola cores entre classes e
+    não respeita a tabela categórica. Para o mapa, os códigos são remapeados para índices
+    consecutivos e então recebem exatamente as cores oficiais. Os dados analíticos
+    originais permanecem inalterados fora desta função.
+    """
+    if product_name != "Cobertura do Solo":
+        return image, _dynamic_vis(product_name, image, region)
+
+    # Oceano (200) e desconhecido (0) ficam transparentes para preservar o mapa base.
+    mask = image.neq(0).And(image.neq(200))
+    indexed = (
+        image.updateMask(mask)
+        .remap(LANDCOVER_VALUES, list(range(len(LANDCOVER_VALUES))), -1)
+        .rename("landcover_display")
+    )
+    indexed = indexed.updateMask(indexed.gte(0))
+    vis = {
+        "min": 0,
+        "max": len(LANDCOVER_VALUES) - 1,
+        "palette": LANDCOVER_PALETTE,
+    }
+    return indexed, vis
 
 
 def visual_image_with_overlays(
@@ -171,9 +179,8 @@ def visual_image_with_overlays(
     admin1_name: str | None = None,
     city_name: str | None = None,
 ) -> ee.Image:
-    """Cria imagem RGB para PNG/JPEG com shapes desenhados."""
-    vis = _dynamic_vis(product_name, image, region)
-    rgb = image.visualize(**vis)
+    display_image, vis = _display_image_and_vis(product_name, image, region)
+    rgb = display_image.visualize(**vis)
 
     if "América do Sul e países" in overlays:
         rgb = rgb.blend(_outline_image(south_america_countries_fc(), "222222", 2))
@@ -201,21 +208,19 @@ def _legend_html(product_name: str, vis_params: dict | None = None) -> str:
         <div style="position: fixed; bottom: 22px; right: 22px; z-index: 9999;
                     background: white; padding: 7px 9px; border-radius: 10px;
                     box-shadow: 0 2px 8px rgba(0,0,0,0.16); font-size: 11px;">
-            <b>Cobertura do Solo</b><br>
-            <span>ver tabela lateral</span>
+            <b>Cobertura do solo</b><br><span>classes categóricas • legenda lateral</span>
         </div>
         """
 
     palette = vis["palette"]
-    gradient = ",".join(f"#{c}" for c in palette)
+    gradient = ",".join(f"#{color}" for color in palette)
     min_value = vis.get("min", "")
     max_value = vis.get("max", "")
 
     return f"""
     <div style="position: fixed; bottom: 22px; right: 22px; z-index: 9999;
                 background: white; padding: 8px 9px; border-radius: 10px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.16); font-size: 11px;
-                width: 168px;">
+                box-shadow: 0 2px 8px rgba(0,0,0,0.16); font-size: 11px; width: 190px;">
         <b style="font-size: 11px;">{product.label}</b><br>
         <span style="font-size: 10px;">{product.unit}</span>
         <div style="height: 8px; margin: 6px 0; border-radius: 999px;
@@ -256,10 +261,11 @@ def make_map(
     image = period_image(product_name, start, end, region)
     product = PRODUCTS[product_name]
     center, zoom = map_center(region_name, bounds, region=region)
-    vis = _dynamic_vis(product_name, image, region)
+    display_image, vis = _display_image_and_vis(product_name, image, region)
 
+    layer_name = product.label if not product.temporal else f"{product.label} — {start} a {end}"
     m = _base_map(center, zoom, basemap)
-    m.add_ee_layer(image, vis, f"{product.label} — {start} a {end}")
+    m.add_ee_layer(display_image, vis, layer_name)
     _add_overlays(
         m,
         region,
@@ -271,42 +277,4 @@ def make_map(
     )
     m.get_root().html.add_child(folium.Element(_legend_html(product_name, vis)))
     folium.LayerControl(collapsed=False).add_to(m)
-
     return m, image, region
-
-
-def example_home_map():
-    """Mapa rápido da página inicial: acumulado mensal de Queimadas na América do Sul.
-
-    Usa sempre o último mês completo para evitar mês corrente incompleto.
-    """
-    from datetime import date, timedelta
-
-    _ensure_folium_ee_method()
-
-    today = date.today()
-    first_day_this_month = date(today.year, today.month, 1)
-    last_day_previous_month = first_day_this_month - timedelta(days=1)
-    start_date = date(last_day_previous_month.year, last_day_previous_month.month, 1)
-    end_date = first_day_this_month
-
-    start = start_date.isoformat()
-    end = end_date.isoformat()
-    month_label = start_date.strftime("%m/%Y")
-
-    region = get_region("América do Sul")
-    image = period_image("Queimadas", start, end, region)
-
-    vis = PRODUCTS["Queimadas"].vis
-    m = _base_map([-25, -60], 3, "Claro")
-    m.add_ee_layer(image, vis, f"Queimadas acumulado mensal — América do Sul — {month_label}")
-    _add_overlays(
-        m,
-        region,
-        ["América do Sul e países"],
-        region_name="América do Sul",
-    )
-    m.get_root().html.add_child(folium.Element(_legend_html("Queimadas", vis)))
-    folium.LayerControl(collapsed=False).add_to(m)
-
-    return m

@@ -18,3 +18,7 @@ __pycache__/
 .venv/
 
 .streamlit/secrets.toml
+*.json
+venv/
+.vscode/
+.DS_Store

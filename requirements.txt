@@ -1,7 +1,7 @@
-streamlit>=1.36
-earthengine-api>=1.0
-folium>=0.16
-streamlit-folium>=0.20
-pandas>=2.0
-plotly>=5.20
-google-auth>=2.0
+streamlit>=1.39
+earthengine-api
+google-auth
+folium
+streamlit-folium
+pandas
+plotly
