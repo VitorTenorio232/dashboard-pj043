@@ -57,7 +57,7 @@ with right:
         st.markdown("#### Produtos em destaque")
         st.caption("Exemplos reais gerados no SIMQA. A animação é apenas demonstrativa e roda em loop.")
         if gif_path.exists():
-            st.image(str(gif_path), use_container_width=True)
+            st.image(str(gif_path), width="stretch")
         else:
             st.info("Adicione o arquivo `assets/home_produtos.gif` para exibir a animação da página inicial.")
 

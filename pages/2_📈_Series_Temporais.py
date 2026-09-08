@@ -78,7 +78,7 @@ with left:
                     city_name=city_name,
                 )
 
-            st.dataframe(dataframe, use_container_width=True, hide_index=True)
+            st.dataframe(dataframe, width="stretch", hide_index=True)
 
             if product.temporal:
                 figure = px.line(
@@ -90,7 +90,7 @@ with left:
                     labels={"valor": product.unit, "data_inicio": "Data"},
                 )
                 figure.update_layout(height=500)
-                st.plotly_chart(figure, use_container_width=True)
+                st.plotly_chart(figure, width="stretch")
             else:
                 value = dataframe.iloc[0]["valor"] if not dataframe.empty else None
                 st.metric(product.label, "Sem dados" if value is None else f"{value:.4g} {product.unit}")

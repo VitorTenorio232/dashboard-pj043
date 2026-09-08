@@ -53,7 +53,7 @@ with st.sidebar:
     processing_time_warning(product, start, end)
 
     # O botão fica no lado esquerdo, imediatamente abaixo do bloco temporal/aviso.
-    run = st.button("Gerar mapa", type="primary", use_container_width=True)
+    run = st.button("Gerar mapa", type="primary", width="stretch")
 
 if product.temporal and start is not None and end is not None and start > end:
     st.error("A data inicial precisa ser anterior ou igual à data final.")

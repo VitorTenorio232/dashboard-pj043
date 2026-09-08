@@ -342,7 +342,7 @@ def product_card(icon: str, title: str, text: str, footer: str) -> None:
 
 def product_card_button(product_name: str, icon: str, title: str, text: str, footer: str) -> None:
     product_card(icon, title, text, footer)
-    if st.button(f"Abrir {title}", key=f"home_open_{safe_filename(product_name)}", use_container_width=True):
+    if st.button(f"Abrir {title}", key=f"home_open_{safe_filename(product_name)}", width="stretch"):
         # Define explicitamente os estados da página de mapas. Isso evita que o
         # selectbox volte ao primeiro produto no rerun seguinte.
         st.session_state["produto_rapido"] = product_name

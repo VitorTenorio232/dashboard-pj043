@@ -191,19 +191,19 @@ with left:
             c1, c2, c3 = st.columns(3)
             with c1:
                 if "GeoTIFF" in links:
-                    st.link_button("Baixar GeoTIFF", links["GeoTIFF"], use_container_width=True)
+                    st.link_button("Baixar GeoTIFF", links["GeoTIFF"], width="stretch")
                 if "PNG" in links:
-                    st.link_button("Baixar PNG", links["PNG"], use_container_width=True)
+                    st.link_button("Baixar PNG", links["PNG"], width="stretch")
             with c2:
                 if "JPEG" in links:
-                    st.link_button("Baixar JPEG", links["JPEG"], use_container_width=True)
+                    st.link_button("Baixar JPEG", links["JPEG"], width="stretch")
                 if want_csv:
                     st.download_button(
                         "Baixar CSV de metadados",
                         metadata_df.to_csv(index=False).encode("utf-8"),
                         file_name=f"{base_name}_metadados.csv",
                         mime="text/csv",
-                        use_container_width=True,
+                        width="stretch",
                     )
             with c3:
                 if want_json:
@@ -212,7 +212,7 @@ with left:
                         json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"),
                         file_name=f"{base_name}_metadados.json",
                         mime="application/json",
-                        use_container_width=True,
+                        width="stretch",
                     )
                 if html_bytes is not None:
                     st.download_button(
@@ -220,11 +220,11 @@ with left:
                         html_bytes,
                         file_name=f"{base_name}_mapa.html",
                         mime="text/html",
-                        use_container_width=True,
+                        width="stretch",
                     )
 
             st.markdown("### Metadados")
-            st.dataframe(metadata_df, use_container_width=True, hide_index=True)
+            st.dataframe(metadata_df, width="stretch", hide_index=True)
         except Exception as exc:
             st.error("Não foi possível gerar os downloads com os filtros selecionados.")
             st.exception(exc)
