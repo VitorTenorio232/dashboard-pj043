@@ -1,49 +1,36 @@
-# PJ043 Analytics — Dashboard sob demanda
+# VIGIA — Visualização Integrada de Gases, Incêndios e Atmosfera
 
-Dashboard Streamlit para gerar mapas, séries temporais e downloads usando Google Earth Engine.
+**Projeto PJ043 · Interface v5.5**
 
-## Produtos
+Plataforma web para exploração e divulgação de dados de queimadas, composição atmosférica e variáveis ambientais, processados sob demanda no Google Earth Engine.
 
-- Queimadas: FIRMS
-- CO: Sentinel-5P OFFL L3 CO
-- Aerossóis: Sentinel-5P OFFL L3 AER_AI
-- Metano: Sentinel-5P OFFL L3 CH4
+## Funcionalidades
 
-## Rodar localmente
+- HOME editorial com exemplos reais e catálogo pesquisável
+- Mapas interativos com recortes por país, estado, município e coordenadas
+- Séries temporais e downloads de produtos ambientais
+- Fontes FIRMS, VIIRS, GOES, Sentinel-5P, MODIS, CHIRPS, ERA5-Land e outras
+- Painéis com fonte, unidade, resolução, método e limitações
+
+## Execução
 
 ```bash
-cd dashboard_pj043_sob_demanda
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-
-export EE_PROJECT=eng-scene-497515-t2
-earthengine authenticate
-
+pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Publicar no GitHub
+Configure as credenciais do Earth Engine no arquivo local `.streamlit/secrets.toml` ou no painel Secrets do Streamlit Community Cloud. **Não publique credenciais no GitHub.**
 
-```bash
-git init
-git add .
-git commit -m "dashboard PJ043 sob demanda"
-git branch -M main
-git remote add origin https://github.com/VitorTenorio232/Projeto-PJ043-2026.git
-git push -u origin main
-```
+## Atualização
 
-## Streamlit Community Cloud
+Leia `GUIA_ATUALIZACAO.md`. O instalador V5.5 altera somente a camada visual, preservando os módulos científicos existentes e as credenciais.
 
-- Repository: `VitorTenorio232/Projeto-PJ043-2026`
-- Branch: `main`
-- Main file path: `app.py`
+## Aviso científico
 
-Depois configure os Secrets no painel do Streamlit Cloud.
+Detecções de focos de calor são observações rasterizadas que não equivalem ao número de incêndios únicos. O sistema apoia consulta e divulgação, não substitui os serviços oficiais de alerta.
 
-## Atenção
+## Design
 
-Não envie `.streamlit/secrets.toml` nem arquivos `.json` para o GitHub.
-Use `.streamlit/secrets.toml.example` apenas como modelo.
+Leia `DESIGN.md` para o conjunto de tokens, padrões de acessibilidade e referências externas.

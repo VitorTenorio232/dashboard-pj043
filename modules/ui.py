@@ -17,7 +17,7 @@ from modules.products import (
     latest_available_timestamp,
     safe_filename,
 )
-from modules.regions import south_america_country_names, admin1_names, admin2_names
+from modules.regions import south_america_country_names, admin1_names, admin2_names, region_options, normalize_region_name
 
 
 LANDCOVER_CLASSES = [
@@ -52,6 +52,39 @@ def load_css(path: str) -> None:
     if p.exists():
         st.markdown(f"<style>{p.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
+
+def sidebar_brand() -> None:
+    """Identidade visual do VIGIA no cartão verde lateral."""
+    import base64
+
+    icon_path = Path(__file__).resolve().parents[1] / "assets" / "icone_vigia.png"
+    if icon_path.is_file():
+        encoded = base64.b64encode(icon_path.read_bytes()).decode("ascii")
+        st.markdown(
+            '<div class="vigia-brand vigia-brand--official">'
+            '<div class="vigia-brand-header">'
+            f'<img src="data:image/png;base64,{encoded}" alt="Ícone VIGIA" '
+            'class="vigia-brand-icon">'
+            '<strong>VIGIA</strong>'
+            '</div>'
+            '<span class="vigia-brand-caption">'
+            'Visualização Integrada de Gases, Incêndios e Atmosfera'
+            '</span></div>',
+            unsafe_allow_html=True,
+        )
+        return
+    st.markdown(
+        '<div class="vigia-brand"><strong>VIGIA</strong>'
+        '<span>Visualização Integrada de Gases, Incêndios e Atmosfera</span></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def section_header(title: str, description: str = "") -> None:
+    st.markdown(
+        f'<div class="vigia-section"><h2>{title}</h2><p>{description}</p></div>',
+        unsafe_allow_html=True,
+    )
 
 def page_title(title: str, subtitle: str) -> None:
     st.markdown(
@@ -116,27 +149,29 @@ def _availability_text(product: Product, use_dynamic: bool = True) -> str:
 
 
 def product_metadata(product: Product, compact: bool = False) -> None:
-    st.markdown(f"### {product.label}" if not compact else f"#### {product.label}")
-    st.write(f"**Banco/plataforma:** {product.group}")
-    st.write(f"**Fonte:** {product.source}")
-    st.write(f"**Coleção/Imagem GEE:** `{product.collection or product.image_id}`")
-    st.write(f"**Banda:** `{','.join(product.band) if isinstance(product.band, list) else product.band}`")
-    st.write(f"**Unidade:** `{product.unit}`")
-    st.write(f"**Estatística:** {product.statistic}")
-    st.write(f"**Escala nominal:** `{product.scale} m`")
-    st.write(f"**Disponibilidade:** {_availability_text(product, use_dynamic=not compact)}")
-    if product.cadence:
-        st.write(f"**Cadência:** {product.cadence}")
-
-    st.markdown("**O que representa**")
+    """Painel científico, organizado para leitura sem perder rastreabilidade."""
+    st.markdown(f"#### {product.label}" if not compact else f"##### {product.label}")
+    st.caption(product.group)
+    st.markdown("**Visão geral**")
     st.write(product.user_note)
-    st.markdown("**Cálculo aplicado no sistema**")
-    st.write(product.method_note)
-    st.markdown("**Limitações e cuidados**")
-    st.warning(product.limitations)
-
+    c1, c2 = st.columns(2)
+    c1.markdown(f"**Unidade:** {product.unit}")
+    c2.markdown(f"**Resolução nominal:** {product.scale:,} m".replace(",", "."))
+    st.caption(f"Disponibilidade: {_availability_text(product, use_dynamic=not compact)}")
+    with st.expander("Fonte, banda e estatística", expanded=False):
+        st.write(f"**Banco/plataforma:** {product.group}")
+        st.write(f"**Fonte:** {product.source}")
+        st.code(product.collection or product.image_id or "", language="text")
+        st.write(f"**Banda:** {','.join(product.band) if isinstance(product.band, list) else product.band}")
+        st.write(f"**Estatística:** {product.statistic}")
+        if product.cadence:
+            st.write(f"**Cadência:** {product.cadence}")
+    with st.expander("Método de cálculo", expanded=False):
+        st.write(product.method_note)
+    with st.expander("Limitações e interpretação", expanded=False):
+        st.write(product.limitations)
     if product.catalog_url:
-        st.link_button("Abrir catálogo oficial do Earth Engine", product.catalog_url)
+        st.link_button("Ver catálogo oficial ↗", product.catalog_url, width="stretch")
 
 
 def product_selector_ui(prefix: str, default_product: str | None = None) -> str:
@@ -282,45 +317,72 @@ def custom_bounds_ui():
     return lon_min, lat_min, lon_max, lat_max
 
 
+
+def region_picker_ui(key: str) -> str:
+    """Seletor compacto de área, equivalente ao seletor de banco de dados."""
+    options = region_options()
+    old_value = st.session_state.get(key)
+    aliases = {
+        "País da América do Sul": "Países",
+        "Estado/Província/Departamento": "Estados do Brasil",
+        "Cidade/Município/Distrito": "Cidades do Brasil",
+        "Brasil": "Estados do Brasil",
+        "Minas Gerais": "Estados do Brasil",
+        "Itajubá - raio 20 km": "Cidades do Brasil",
+    }
+    if old_value not in options:
+        st.session_state[key] = aliases.get(old_value, "América do Sul")
+
+    return st.selectbox(
+        "Área de interesse",
+        options,
+        key=key,
+        help="Escolha o recorte geográfico para o produto selecionado.",
+    )
+
+
 def regional_selector_ui(region_name: str):
+    """Filtros regionais condicionais; estados e cidades sempre no Brasil."""
     country_name = None
     admin1_name = None
     city_name = None
     bounds = None
+    normalized = normalize_region_name(region_name)
 
-    if region_name == "País da América do Sul":
+    if normalized == "País da América do Sul":
         countries = south_america_country_names()
-        country_name = st.selectbox("País", countries, index=countries.index("Brazil") if "Brazil" in countries else 0)
+        country_name = st.selectbox(
+            "País da América do Sul", countries,
+            index=countries.index("Brazil") if "Brazil" in countries else 0,
+        )
 
-    elif region_name == "Estado/Província/Departamento":
-        countries = south_america_country_names()
-        country_name = st.selectbox("País", countries, index=countries.index("Brazil") if "Brazil" in countries else 0)
-        admins = admin1_names(country_name)
-        if not admins:
-            st.warning("Nenhuma unidade de primeiro nível encontrada para esse país.")
+    elif normalized == "Estado/Província/Departamento":
+        country_name = "Brazil"
+        states = admin1_names("Brazil")
+        if not states:
+            st.warning("Nenhum estado brasileiro encontrado no catálogo administrativo.")
             st.stop()
-        default = "Minas Gerais" if country_name == "Brazil" and "Minas Gerais" in admins else admins[0]
-        admin1_name = st.selectbox("Estado/Província/Departamento", admins, index=admins.index(default))
+        default = "Minas Gerais" if "Minas Gerais" in states else states[0]
+        admin1_name = st.selectbox("Estado do Brasil", states, index=states.index(default))
 
-    elif region_name == "Cidade/Município/Distrito":
-        st.caption("O shape municipal será carregado apenas para a cidade selecionada.")
-        countries = south_america_country_names()
-        country_name = st.selectbox("País", countries, index=countries.index("Brazil") if "Brazil" in countries else 0)
-        admins = admin1_names(country_name)
-        if not admins:
-            st.warning("Nenhuma unidade de primeiro nível encontrada para esse país.")
+    elif normalized == "Cidade/Município/Distrito":
+        country_name = "Brazil"
+        states = admin1_names("Brazil")
+        if not states:
+            st.warning("Nenhum estado brasileiro encontrado no catálogo administrativo.")
             st.stop()
-        default_admin = "Minas Gerais" if country_name == "Brazil" and "Minas Gerais" in admins else admins[0]
-        admin1_name = st.selectbox("Estado/Província/Departamento", admins, index=admins.index(default_admin))
+        default_state = "Minas Gerais" if "Minas Gerais" in states else states[0]
+        admin1_name = st.selectbox("Estado do Brasil", states, index=states.index(default_state))
 
-        cities = admin2_names(country_name, admin1_name)
+        cities = admin2_names("Brazil", admin1_name)
         if not cities:
-            st.warning("Nenhum município/distrito encontrado para essa unidade.")
+            st.warning("Nenhum município encontrado para o estado selecionado.")
             st.stop()
-        default_city = "Itajubá" if country_name == "Brazil" and "Itajubá" in cities else cities[0]
-        city_name = st.selectbox("Cidade/Município/Distrito", cities, index=cities.index(default_city))
+        default_city = "Itajubá" if "Itajubá" in cities else cities[0]
+        city_name = st.selectbox("Cidade do Brasil", cities, index=cities.index(default_city))
+        st.caption("Limite municipal proveniente da base administrativa GAUL disponível no GEE.")
 
-    elif region_name == "Retângulo personalizado":
+    elif normalized == "Retângulo personalizado":
         bounds = custom_bounds_ui()
 
     return bounds, country_name, admin1_name, city_name
@@ -341,8 +403,14 @@ def product_card(icon: str, title: str, text: str, footer: str) -> None:
 
 
 def product_card_button(product_name: str, icon: str, title: str, text: str, footer: str) -> None:
+<<<<<<< HEAD
     product_card(icon, title, text, footer)
     if st.button(f"Abrir {title}", key=f"home_open_{safe_filename(product_name)}", width="stretch"):
+=======
+    short_text = text if len(text) <= 155 else text[:152].rsplit(" ", 1)[0] + "…"
+    product_card(icon, title, short_text, footer)
+    if st.button(f"Explorar: {title}", key=f"home_open_{safe_filename(product_name)}", width="stretch"):
+>>>>>>> 2194994 (release: VIGIA v5.5.10 - identidade visual e melhorias)
         # Define explicitamente os estados da página de mapas. Isso evita que o
         # selectbox volte ao primeiro produto no rerun seguinte.
         st.session_state["produto_rapido"] = product_name

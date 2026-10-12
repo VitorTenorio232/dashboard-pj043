@@ -17,25 +17,30 @@ from modules.ui import (
     processing_time_warning,
     product_metadata,
     product_selector_ui,
-    regional_selector_ui,
+    regional_selector_ui, region_picker_ui, sidebar_brand,
 )
 
 load_css("assets/style.css")
 initialize_gee()
 
 page_title(
-    "📈 Séries temporais",
+    "Séries temporais",
     "Extraia estatísticas por dia ou mês para produtos de queimadas, atmosfera e superfície.",
 )
 
 with st.sidebar:
-    st.header("Filtros da série")
+    sidebar_brand()
+    st.markdown("**01  ·  Fonte de dados**")
     product_name = product_selector_ui("series")
     product = PRODUCTS[product_name]
 
-    region_name = st.selectbox("Região", region_options(), key="series_region")
+    st.divider()
+    st.markdown("**02  ·  Área de interesse**")
+    region_name = region_picker_ui("series_region")
     bounds, country_name, admin1_name, city_name = regional_selector_ui(region_name)
 
+    st.divider()
+    st.markdown("**03  ·  Período**")
     start, end = date_range_ui(product, "series_dates")
     processing_time_warning(product, start, end)
 
@@ -63,20 +68,15 @@ with right:
         )
 
 with left:
-    if st.button("Gerar série temporal", type="primary"):
+    run_series = st.button("Gerar série temporal", type="primary", width="stretch")
+    if run_series:
         try:
-            with st.spinner("Calculando no Earth Engine..."):
+            with st.spinner("Calculando no Google Earth Engine..."):
                 dataframe = make_series(
-                    product_name,
-                    start,
-                    end,
-                    region_name,
-                    frequency,
-                    bounds,
-                    country_name=country_name,
-                    admin1_name=admin1_name,
-                    city_name=city_name,
+                    product_name, start, end, region_name, frequency, bounds,
+                    country_name=country_name, admin1_name=admin1_name, city_name=city_name,
                 )
+<<<<<<< HEAD
 
             st.dataframe(dataframe, width="stretch", hide_index=True)
 
@@ -102,8 +102,40 @@ with left:
                 file_name=filename,
                 mime="text/csv",
             )
+=======
+            st.session_state["vigia_last_series"] = {
+                "df": dataframe, "product": product_name, "region": region_name,
+                "frequency": frequency,
+            }
+>>>>>>> 2194994 (release: VIGIA v5.5.10 - identidade visual e melhorias)
         except Exception as exc:
             st.error("Não foi possível gerar a série.")
             st.exception(exc)
+
+    last_series = st.session_state.get("vigia_last_series")
+    if not last_series:
+        with st.container(border=True):
+            st.info("Defina os filtros e clique em **Gerar série temporal** para iniciar.")
     else:
-        st.info("Configure os filtros e clique em **Gerar série temporal**.")
+        df = last_series["df"]
+        last_product = PRODUCTS[last_series["product"]]
+        st.markdown(f"### {last_product.label}")
+        st.caption(f"Região: {last_series['region']} · Frequência: {last_series['frequency']}")
+        if last_series["product"] != product_name or last_series["region"] != region_name:
+            st.info("Os filtros foram alterados. A tabela ainda representa a última série gerada.")
+        with st.container(border=True):
+            if not df.empty and last_product.temporal:
+                fig = px.line(df, x="data_inicio", y="valor", markers=True,
+                              labels={"valor": last_product.unit, "data_inicio": "Data"})
+                fig.update_traces(line_color="#0a796b", marker_color="#d86c36")
+                fig.update_layout(height=400, margin=dict(l=10,r=10,t=30,b=15),
+                                  paper_bgcolor="rgba(0,0,0,0)",
+                                  plot_bgcolor="rgba(0,0,0,0)")
+                st.plotly_chart(fig, width="stretch")
+            elif not df.empty:
+                value = df.iloc[0]["valor"]
+                st.metric(last_product.label, "Sem dados" if value is None else f"{value:.4g} {last_product.unit}")
+            st.dataframe(df, width="stretch", hide_index=True)
+            st.download_button("Baixar CSV da série", data=df.to_csv(index=False).encode("utf-8"),
+                               file_name=f"VIGIA_serie_{safe_filename(last_series['product'])}.csv",
+                               mime="text/csv", width="stretch")

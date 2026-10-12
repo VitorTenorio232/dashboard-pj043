@@ -32,19 +32,28 @@ def south_america_bbox():
 
 
 def region_options() -> list[str]:
+    """Cinco áreas de interesse, na ordem exibida na interface."""
     return [
         "América do Sul",
-        "País da América do Sul",
-        "Estado/Província/Departamento",
-        "Cidade/Município/Distrito",
-        "Brasil",
-        "Minas Gerais",
-        "Itajubá - raio 20 km",
+        "Países",
+        "Estados do Brasil",
+        "Cidades do Brasil",
         "Retângulo personalizado",
     ]
 
 
+def normalize_region_name(name: str | None) -> str | None:
+    """Aceita nomes novos e antigos sem afetar o processamento científico."""
+    aliases = {
+        "Países": "País da América do Sul",
+        "Estados do Brasil": "Estado/Província/Departamento",
+        "Cidades do Brasil": "Cidade/Município/Distrito",
+    }
+    return aliases.get(name, name)
+
+
 def overlay_options(region_name: str | None = None) -> list[str]:
+    region_name = normalize_region_name(region_name)
     # Para América do Sul, não oferece "Região selecionada",
     # porque a região de processamento é um retângulo e ficaria visualmente feia.
     opts = ["América do Sul e países"]
@@ -68,6 +77,7 @@ def overlay_options(region_name: str | None = None) -> list[str]:
 
 
 def default_overlays(region_name: str | None = None) -> list[str]:
+    region_name = normalize_region_name(region_name)
     # América do Sul: mostra só países, sem o quadrado do recorte.
     if region_name == "América do Sul":
         return ["América do Sul e países"]
@@ -159,6 +169,7 @@ def get_region(
     city_name: str | None = None,
     state_name: str | None = None,
 ):
+    name = normalize_region_name(name)
     if name == "América do Sul":
         # Mantém recorte leve para evitar erro de geometria grande no Earth Engine.
         return south_america_bbox()
@@ -196,6 +207,7 @@ def map_center(
     bounds: tuple[float, float, float, float] | None = None,
     region=None,
 ):
+    name = normalize_region_name(name)
     if name == "Retângulo personalizado" and bounds:
         lon_min, lat_min, lon_max, lat_max = bounds
         return [(lat_min + lat_max) / 2, (lon_min + lon_max) / 2], 6
@@ -222,6 +234,7 @@ def region_display_name(
     city_name: str | None = None,
     state_name: str | None = None,
 ) -> str:
+    region_name = normalize_region_name(region_name)
     if region_name == "País da América do Sul" and country_name:
         return country_name
     if region_name == "Estado/Província/Departamento" and country_name and admin1_name:

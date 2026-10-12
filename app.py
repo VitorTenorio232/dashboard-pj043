@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Ponto de entrada e navegação principal do SIMQA."""
+"""Ponto de entrada e navegação principal do VIGIA."""
 
 from __future__ import annotations
 
 import streamlit as st
+from pathlib import Path
 
 st.set_page_config(
     layout="wide",
-    page_title="SIMQA",
-    page_icon="🌎",
+    page_title="VIGIA | Monitoramento Ambiental",
+    page_icon=str(Path(__file__).resolve().parent / "assets" / "favicon_vigia.png"),
     initial_sidebar_state="expanded",
     menu_items={
         "About": (
-            "SIMQA — Sistema Integrado de Monitoramento de Queimadas e Atmosfera. "
+            "VIGIA — Visualização Integrada de Gases, Incêndios e Atmosfera. "
             "Projeto PJ043 com processamento geoespacial no Google Earth Engine."
         ),
     },

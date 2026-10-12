@@ -6,20 +6,20 @@ from __future__ import annotations
 import streamlit as st
 
 from modules.products import PRODUCTS, product_groups, products_in_group
-from modules.ui import load_css, page_title, product_metadata
+from modules.ui import load_css, page_title, product_metadata, section_header
 
 load_css("assets/style.css")
 
 page_title(
-    "ℹ️ Sobre o SIMQA",
+    "ℹ️ Sobre o VIGIA",
     "Finalidade, interpretação dos produtos, bancos de dados e cuidados de uso.",
 )
 
 st.markdown(
     """
-    ## Sistema Integrado de Monitoramento de Queimadas e Atmosfera
+    ## Visualização Integrada de Gases, Incêndios e Atmosfera
 
-    O **SIMQA** é uma aplicação do Projeto PJ043 voltada à consulta sob demanda de informações
+    O **VIGIA** é uma aplicação do Projeto PJ043 voltada à consulta sob demanda de informações
     ambientais disponíveis no Google Earth Engine. O sistema organiza diferentes sensores e bancos
     de dados em uma única interface, permitindo gerar mapas interativos, séries temporais e arquivos
     para análise posterior.
@@ -38,9 +38,9 @@ st.markdown(
     - **AOD MAIAC:** representa a carga óptica de aerossóis integrada na coluna atmosférica e pode ter
       lacunas sob nuvens ou condições inadequadas de recuperação.
     - **CHIRPS v3:** é usado para precipitação histórica diária. Como a ingestão no Earth Engine pode
-      apresentar defasagem, o SIMQA consulta automaticamente a última cena realmente disponível.
+      apresentar defasagem, o VIGIA consulta automaticamente a última cena realmente disponível.
     - **ERA5-Land Hourly:** é usado como alternativa para precipitação recente. O Earth Engine fornece
-      precipitação horária em metros; o SIMQA converte para milímetros e soma as horas do período.
+      precipitação horária em metros; o VIGIA converte para milímetros e soma as horas do período.
       Por ser uma reanálise, deve ser interpretado de forma diferente de uma medição direta de chuva.
     - **Produtos estáticos:** relevo e modificação humana não possuem seletor de data porque o catálogo
       utilizado não representa uma série temporal operacional.
@@ -49,19 +49,19 @@ st.markdown(
 
     ## Processamento
 
-    O SIMQA realiza as operações somente depois da solicitação do usuário. Períodos longos, regiões
+    O VIGIA realiza as operações somente depois da solicitação do usuário. Períodos longos, regiões
     extensas, sensores de alta resolução e o GOES com cadência de minutos podem exigir mais tempo.
     As informações técnicas de cada variável aparecem no painel lateral direito das páginas de análise,
     incluindo definição, disponibilidade, cálculo aplicado, unidade, limitações e acesso ao catálogo oficial.
     """
 )
 
-st.markdown("## Catálogo organizado por plataforma")
-for group in product_groups():
-    with st.expander(group):
-        for key in products_in_group(group):
-            product_metadata(PRODUCTS[key], compact=True)
-            st.markdown("---")
+section_header("Catálogo técnico", "Consulte um produto por vez")
+selected_group = st.selectbox("Banco / plataforma", product_groups(), key="about_group")
+options = products_in_group(selected_group)
+selected_product = st.selectbox("Produto", options, format_func=lambda k: PRODUCTS[k].label, key="about_product")
+with st.container(border=True):
+    product_metadata(PRODUCTS[selected_product], compact=True)
 
 st.markdown(
     """

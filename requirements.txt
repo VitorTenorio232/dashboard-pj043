@@ -1,7 +1,9 @@
-streamlit>=1.39
+streamlit>=1.53,<2
 earthengine-api
 google-auth
 folium
 streamlit-folium
 pandas
 plotly
+
+Pillow

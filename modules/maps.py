@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Mapas Folium + Earth Engine do SIMQA."""
+"""Mapas Folium + Earth Engine do VIGIA."""
 
 from __future__ import annotations
 
@@ -118,42 +118,15 @@ def _add_overlays(
 
 
 def _dynamic_vis(product_name: str, image: ee.Image, region) -> dict:
+    """Mantém a escala visual fixa definida no catálogo de produtos."""
     product = PRODUCTS[product_name]
-    vis = dict(product.vis)
-
-    if product.kind in {"precip_sum", "precip_era5land_sum"} or product.kind.startswith("fire_"):
-        try:
-            stats = image.reduceRegion(
-                reducer=ee.Reducer.max(),
-                geometry=region,
-                scale=product.scale,
-                maxPixels=1e13,
-                bestEffort=True,
-            ).getInfo()
-            value = stats.get(product.out_band)
-            if value is not None and float(value) > 0:
-                maximum = float(value)
-                vis["min"] = 0
-                vis["max"] = max(1, round(maximum, 2))
-        except Exception:
-            pass
-
-    return vis
+    return dict(product.vis)
 
 
 def _display_image_and_vis(product_name: str, image: ee.Image, region) -> tuple[ee.Image, dict]:
-    """Retorna a imagem/visualização usada apenas no mapa.
-
-    Para cobertura do solo, os códigos originais são esparsos (0, 20, 30, ..., 200).
-    Uma paleta contínua aplicada diretamente de 0 a 200 interpola cores entre classes e
-    não respeita a tabela categórica. Para o mapa, os códigos são remapeados para índices
-    consecutivos e então recebem exatamente as cores oficiais. Os dados analíticos
-    originais permanecem inalterados fora desta função.
-    """
     if product_name != "Cobertura do Solo":
         return image, _dynamic_vis(product_name, image, region)
 
-    # Oceano (200) e desconhecido (0) ficam transparentes para preservar o mapa base.
     mask = image.neq(0).And(image.neq(200))
     indexed = (
         image.updateMask(mask)
@@ -167,6 +140,106 @@ def _display_image_and_vis(product_name: str, image: ee.Image, region) -> tuple[
         "palette": LANDCOVER_PALETTE,
     }
     return indexed, vis
+
+
+def _fmt_number(value: float | int | None, decimals: int = 2) -> str:
+    if value is None:
+        return "n/d"
+    if isinstance(value, (int,)):
+        return f"{value:,}".replace(",", ".")
+    text = f"{value:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return text
+
+
+def summarize_image(product_name: str, image: ee.Image, region) -> dict:
+    """Resume o conteúdo do produto dentro da área selecionada."""
+    product = PRODUCTS[product_name]
+    band = product.out_band
+
+    if product_name == "Cobertura do Solo":
+        try:
+            hist = image.reduceRegion(
+                reducer=ee.Reducer.frequencyHistogram(),
+                geometry=region,
+                scale=product.scale,
+                maxPixels=1e13,
+                bestEffort=True,
+            ).getInfo() or {}
+            h = hist.get(band) or {}
+            filtered = {k: v for k, v in h.items() if str(k) not in {"0", "200"} and float(v) > 0}
+            n_classes = len(filtered)
+            return {
+                "headline": f"{n_classes} classe(s) presente(s)",
+                "short": f"{n_classes} classe(s)",
+                "details": [
+                    f"Classes distintas no recorte: {n_classes}",
+                    "Escala visual fixa conforme o catálogo do produto.",
+                ],
+            }
+        except Exception:
+            return {
+                "headline": "Resumo indisponível",
+                "short": "n/d",
+                "details": ["Não foi possível calcular as classes presentes."],
+            }
+
+    if product.kind.startswith("fire_"):
+        try:
+            stats = image.unmask(0).reduceRegion(
+                reducer=ee.Reducer.sum().combine(reducer2=ee.Reducer.max(), sharedInputs=True),
+                geometry=region,
+                scale=product.scale,
+                maxPixels=1e13,
+                bestEffort=True,
+            ).getInfo() or {}
+            total = int(round(float(stats.get(f"{band}_sum") or 0)))
+            max_pixel = float(stats.get(f"{band}_max") or 0)
+            return {
+                "headline": f"{total} foco(s) rasterizado(s)",
+                "short": f"{total} foco(s)",
+                "details": [
+                    f"Total no recorte: {total}",
+                    f"Máximo por pixel no período: {_fmt_number(max_pixel, 0)}",
+                ],
+            }
+        except Exception:
+            return {
+                "headline": "Resumo indisponível",
+                "short": "n/d",
+                "details": ["Não foi possível calcular o total de detecções."],
+            }
+
+    try:
+        stats = image.reduceRegion(
+            reducer=ee.Reducer.minMax().combine(reducer2=ee.Reducer.mean(), sharedInputs=True),
+            geometry=region,
+            scale=product.scale,
+            maxPixels=1e13,
+            bestEffort=True,
+        ).getInfo() or {}
+        vmin = stats.get(f"{band}_min")
+        vmax = stats.get(f"{band}_max")
+        vmean = stats.get(f"{band}_mean")
+        if vmin is None and vmax is None and vmean is None:
+            return {
+                "headline": "Sem pixels válidos",
+                "short": "sem dados",
+                "details": ["Não há dados válidos nesse recorte/período."],
+            }
+        return {
+            "headline": f"mín {_fmt_number(vmin)} • máx {_fmt_number(vmax)}",
+            "short": f"mín {_fmt_number(vmin)} • máx {_fmt_number(vmax)}",
+            "details": [
+                f"Média na área: {_fmt_number(vmean)} {product.unit}",
+                f"Faixa na área: {_fmt_number(vmin)} a {_fmt_number(vmax)} {product.unit}",
+            ],
+        }
+    except Exception:
+        return {
+            "headline": "Resumo indisponível",
+            "short": "n/d",
+            "details": ["Não foi possível calcular estatísticas da área."],
+        }
 
 
 def visual_image_with_overlays(
@@ -199,37 +272,33 @@ def visual_image_with_overlays(
     return rgb.clip(region)
 
 
-def _legend_html(product_name: str, vis_params: dict | None = None) -> str:
-    product = PRODUCTS[product_name]
-    vis = vis_params or product.vis
-
-    if product_name == "Cobertura do Solo":
-        return """
-        <div style="position: fixed; bottom: 22px; right: 22px; z-index: 9999;
-                    background: white; padding: 7px 9px; border-radius: 10px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.16); font-size: 11px;">
-            <b>Cobertura do solo</b><br><span>classes categóricas • legenda lateral</span>
-        </div>
-        """
-
-    palette = vis["palette"]
-    gradient = ",".join(f"#{color}" for color in palette)
-    min_value = vis.get("min", "")
-    max_value = vis.get("max", "")
-
-    return f"""
-    <div style="position: fixed; bottom: 22px; right: 22px; z-index: 9999;
-                background: white; padding: 8px 9px; border-radius: 10px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.16); font-size: 11px; width: 190px;">
-        <b style="font-size: 11px;">{product.label}</b><br>
-        <span style="font-size: 10px;">{product.unit}</span>
-        <div style="height: 8px; margin: 6px 0; border-radius: 999px;
-                    background: linear-gradient(to right, {gradient});"></div>
-        <div style="display: flex; justify-content: space-between; font-size: 10px;">
-            <span>{min_value}</span><span>{max_value}</span>
-        </div>
-    </div>
-    """
+def quicklook_download_links(
+    image: ee.Image,
+    product_name: str,
+    region,
+    overlays: list[str],
+    region_name: str | None = None,
+    country_name: str | None = None,
+    admin1_name: str | None = None,
+    city_name: str | None = None,
+    dimensions: int = 1600,
+) -> dict[str, str]:
+    """Gera links rápidos de PNG/JPEG para o mapa atualmente visualizado."""
+    visual = visual_image_with_overlays(
+        image,
+        product_name,
+        region,
+        overlays,
+        region_name=region_name,
+        country_name=country_name,
+        admin1_name=admin1_name,
+        city_name=city_name,
+    )
+    region_bounds = region.bounds(maxError=1000).getInfo()["coordinates"]
+    return {
+        "PNG": visual.getThumbURL({"region": region_bounds, "dimensions": dimensions, "format": "png"}),
+        "JPEG": visual.getThumbURL({"region": region_bounds, "dimensions": dimensions, "format": "jpg"}),
+    }
 
 
 def render_map(m: folium.Map, height: int = 650) -> None:
@@ -275,6 +344,7 @@ def make_map(
         admin1_name=admin1_name,
         city_name=city_name,
     )
-    m.get_root().html.add_child(folium.Element(_legend_html(product_name, vis)))
-    folium.LayerControl(collapsed=False).add_to(m)
+
+    # A legenda flutuante e o controle de camadas foram removidos a pedido do usuário.
+    # As informações do mapa são exibidas abaixo do mapa na própria página.
     return m, image, region
