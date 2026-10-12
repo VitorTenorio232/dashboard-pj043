@@ -204,11 +204,51 @@ def _draw_wrapped_center(draw, value, cx, y, width, font, fill, gap=22, limit=3)
 
 
 def _font(size, bold=False):
+    """Resolve uma fonte Unicode com tamanho real em Linux/Cloud/Windows.
+
+    Nunca usa silenciosamente a fonte bitmap minuscula do Pillow: isso
+    quebrava tamanhos e acentos nos boletins do VIGIA no Streamlit Cloud.
+    """
+    from functools import lru_cache
+    from pathlib import Path
     from PIL import ImageFont
+
+    filename = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    candidates = []
     try:
-        return ImageFont.truetype('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf', size)
-    except OSError:
-        return ImageFont.load_default()
+        import matplotlib
+        candidates.append(Path(matplotlib.get_data_path()) / "fonts" / "ttf" / filename)
+    except (ImportError, AttributeError, OSError):
+        pass
+
+    candidates.extend([
+        filename,
+        Path("/usr/share/fonts/truetype/dejavu") / filename,
+        Path("/usr/local/share/fonts") / filename,
+        Path("/usr/share/fonts/truetype/liberation2") / (
+            "LiberationSans-Bold.ttf" if bold else "LiberationSans-Regular.ttf"
+        ),
+        Path("/usr/share/fonts/truetype/noto") / (
+            "NotoSans-Bold.ttf" if bold else "NotoSans-Regular.ttf"
+        ),
+        Path("C:/Windows/Fonts") / ("arialbd.ttf" if bold else "arial.ttf"),
+    ])
+
+    for candidate in candidates:
+        try:
+            font = ImageFont.truetype(str(candidate), int(size))
+            # Fontes sem glyphs PT-BR desenham o mesmo caractere de substituicao.
+            if bytes(font.getmask("ã")) == bytes(font.getmask("ç")):
+                continue
+            return font
+        except (OSError, ValueError, AttributeError):
+            continue
+
+    raise RuntimeError(
+        "Nao foi encontrada uma fonte Unicode adequada para a prancha VIGIA. "
+        "Instale as dependencias com 'python -m pip install -r requirements.txt' "
+        "(inclui matplotlib), e reinicie o Streamlit."
+    )
 
 
 def render_board(
