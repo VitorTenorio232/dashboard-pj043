@@ -92,69 +92,11 @@ section_header("Catálogo de produtos", "Busque por tema, fonte ou variável")
 search = st.text_input("Buscar no catálogo", placeholder="Ex.: VIIRS, metano, NDVI, precipitação…", key="vigia_home_search")
 st.caption("Cada produto possui fonte, unidade, resolução, método de cálculo e limitações na página de análise.")
 
-<<<<<<< HEAD
-with left:
-    st.markdown("### Como funciona")
-    st.markdown(
-        """
-        **1. Escolha o produto** e o banco/plataforma de interesse.  
-        **2. Defina a região e o período**, quando a variável possuir dimensão temporal.  
-        **3. Gere o resultado** em mapa, série temporal ou arquivo para download.
-        """
-    )
-    st.info(
-        "O tempo de processamento pode aumentar para produtos de alta resolução, alta frequência temporal "
-        "ou análises em áreas de grande extensão.",
-        icon="⚙️",
-    )
-    st.caption(
-        "As informações técnicas de cada produto — fonte, unidade, resolução, disponibilidade, cálculo e "
-        "limitações — aparecem no painel à direita das páginas de análise."
-    )
-
-with right:
-    gif_path = Path("assets/home_produtos.gif")
-    with st.container(border=True):
-        st.markdown("#### Produtos em destaque")
-        st.caption("Exemplos reais gerados no SIMQA. A animação é apenas demonstrativa e roda em loop.")
-        if gif_path.exists():
-            st.image(str(gif_path), width="stretch")
-        else:
-            st.info("Adicione o arquivo `assets/home_produtos.gif` para exibir a animação da página inicial.")
-
-fire_count = sum(1 for p in PRODUCTS.values() if p.kind.startswith("fire_"))
-atmos_count = sum(1 for p in PRODUCTS.values() if p.kind == "maiac_aod" or p.group.startswith("Sentinel-5P"))
-
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Produtos disponíveis", len(PRODUCTS))
-m2.metric("Bancos / plataformas", len(product_groups()))
-m3.metric("Produtos de focos", fire_count)
-m4.metric("Produtos atmosféricos", atmos_count)
-
-st.markdown("---")
-st.header("Explore os produtos")
-st.caption("Os produtos são organizados por tema e permanecem identificados pelo respectivo banco ou plataforma.")
-
-ICON_BY_KIND = {
-    "fire_modis": "🔥",
-    "fire_viirs": "🔥",
-    "fire_goes": "🛰️",
-    "maiac_aod": "🌫️",
-    "mean_collection": "🧪",
-    "lst_modis": "🌡️",
-    "ndvi_sentinel2": "🌿",
-    "precip_sum": "🌧️",
-    "precip_era5land_sum": "🌧️",
-    "static_image": "⛰️",
-    "static_collection": "🏙️",
-    "categorical_last": "🗺️",
-=======
 ICONS = {
     "fire_modis": "🔥", "fire_viirs": "🔥", "fire_goes": "🛰️", "maiac_aod": "🌫️",
     "mean_collection": "🧪", "lst_modis": "🌡️", "ndvi_sentinel2": "🌿",
     "precip_sum": "🌧️", "precip_era5land_sum": "🌧️", "static_image": "⛰️",
     "static_collection": "🏙️", "categorical_last": "🗺️",
->>>>>>> 2194994 (release: VIGIA v5.5.10 - identidade visual e melhorias)
 }
 
 def get_theme(prod):

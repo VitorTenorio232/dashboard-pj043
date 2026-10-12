@@ -332,13 +332,8 @@ def region_picker_ui(key: str) -> str:
     }
     if old_value not in options:
         st.session_state[key] = aliases.get(old_value, "América do Sul")
-
-    return st.selectbox(
-        "Área de interesse",
-        options,
-        key=key,
-        help="Escolha o recorte geográfico para o produto selecionado.",
-    )
+    return st.selectbox("Área de interesse", options, key=key,
+                        help="Escolha o recorte geográfico para o produto selecionado.")
 
 
 def regional_selector_ui(region_name: str):
@@ -403,14 +398,9 @@ def product_card(icon: str, title: str, text: str, footer: str) -> None:
 
 
 def product_card_button(product_name: str, icon: str, title: str, text: str, footer: str) -> None:
-<<<<<<< HEAD
-    product_card(icon, title, text, footer)
-    if st.button(f"Abrir {title}", key=f"home_open_{safe_filename(product_name)}", width="stretch"):
-=======
     short_text = text if len(text) <= 155 else text[:152].rsplit(" ", 1)[0] + "…"
     product_card(icon, title, short_text, footer)
     if st.button(f"Explorar: {title}", key=f"home_open_{safe_filename(product_name)}", width="stretch"):
->>>>>>> 2194994 (release: VIGIA v5.5.10 - identidade visual e melhorias)
         # Define explicitamente os estados da página de mapas. Isso evita que o
         # selectbox volte ao primeiro produto no rerun seguinte.
         st.session_state["produto_rapido"] = product_name

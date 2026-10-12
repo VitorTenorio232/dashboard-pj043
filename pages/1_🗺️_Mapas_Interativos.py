@@ -31,10 +31,6 @@ with st.sidebar:
     st.markdown("**03  ·  Período**")
     start, end = date_range_ui(product, "map_dates")
     processing_time_warning(product, start, end)
-<<<<<<< HEAD
-
-    # O botão fica no lado esquerdo, imediatamente abaixo do bloco temporal/aviso.
-=======
     with st.expander("Configurações do mapa", expanded=False):
         basemap = st.selectbox("Mapa base", BASEMAPS, index=0, key="map_basemap")
         overlays = st.multiselect(
@@ -42,7 +38,6 @@ with st.sidebar:
             default=default_overlays(region_name), key=f"map_overlays_{region_name}",
             help="A escolha de contornos pode aumentar o tempo de renderização.",
         )
->>>>>>> 2194994 (release: VIGIA v5.5.10 - identidade visual e melhorias)
     run = st.button("Gerar mapa", type="primary", width="stretch")
 
 if product.temporal and start is not None and end is not None and start > end:

@@ -113,39 +113,6 @@ with left:
             with c1:
                 if "GeoTIFF" in links:
                     st.link_button("Baixar GeoTIFF", links["GeoTIFF"], width="stretch")
-<<<<<<< HEAD
-                if "PNG" in links:
-                    st.link_button("Baixar PNG", links["PNG"], width="stretch")
-            with c2:
-                if "JPEG" in links:
-                    st.link_button("Baixar JPEG", links["JPEG"], width="stretch")
-                if want_csv:
-                    st.download_button(
-                        "Baixar CSV de metadados",
-                        metadata_df.to_csv(index=False).encode("utf-8"),
-                        file_name=f"{base_name}_metadados.csv",
-                        mime="text/csv",
-                        width="stretch",
-                    )
-            with c3:
-                if want_json:
-                    st.download_button(
-                        "Baixar JSON de metadados",
-                        json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"),
-                        file_name=f"{base_name}_metadados.json",
-                        mime="application/json",
-                        width="stretch",
-                    )
-                if html_bytes is not None:
-                    st.download_button(
-                        "Baixar HTML do mapa",
-                        html_bytes,
-                        file_name=f"{base_name}_mapa.html",
-                        mime="text/html",
-                        width="stretch",
-                    )
-
-=======
                 if "PNG" in file_payloads:
                     st.download_button("Baixar PNG", file_payloads["PNG"], file_name=f"{base_name}.png", mime="image/png", width="stretch")
             with c2:
@@ -158,7 +125,6 @@ with left:
                     st.download_button("Baixar JSON de metadados", json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"), file_name=f"{base_name}_metadados.json", mime="application/json", width="stretch")
                 if html_bytes is not None:
                     st.download_button("Baixar HTML do mapa", html_bytes, file_name=f"{base_name}_mapa.html", mime="text/html", width="stretch")
->>>>>>> 2194994 (release: VIGIA v5.5.10 - identidade visual e melhorias)
             st.markdown("### Metadados")
             st.dataframe(metadata_df, width="stretch", hide_index=True)
         except Exception as exc:

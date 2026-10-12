@@ -76,38 +76,10 @@ with left:
                     product_name, start, end, region_name, frequency, bounds,
                     country_name=country_name, admin1_name=admin1_name, city_name=city_name,
                 )
-<<<<<<< HEAD
-
-            st.dataframe(dataframe, width="stretch", hide_index=True)
-
-            if product.temporal:
-                figure = px.line(
-                    dataframe,
-                    x="data_inicio",
-                    y="valor",
-                    markers=True,
-                    title=f"{product.label} — {region_name}",
-                    labels={"valor": product.unit, "data_inicio": "Data"},
-                )
-                figure.update_layout(height=500)
-                st.plotly_chart(figure, width="stretch")
-            else:
-                value = dataframe.iloc[0]["valor"] if not dataframe.empty else None
-                st.metric(product.label, "Sem dados" if value is None else f"{value:.4g} {product.unit}")
-
-            filename = f"SIMQA_serie_{safe_filename(product_name)}.csv"
-            st.download_button(
-                "Baixar CSV da série",
-                data=dataframe.to_csv(index=False).encode("utf-8"),
-                file_name=filename,
-                mime="text/csv",
-            )
-=======
             st.session_state["vigia_last_series"] = {
                 "df": dataframe, "product": product_name, "region": region_name,
                 "frequency": frequency,
             }
->>>>>>> 2194994 (release: VIGIA v5.5.10 - identidade visual e melhorias)
         except Exception as exc:
             st.error("Não foi possível gerar a série.")
             st.exception(exc)
