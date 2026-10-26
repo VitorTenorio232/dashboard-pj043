@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import csv
 from datetime import date, datetime, timezone
-import importlib
 from pathlib import Path
 import json
 import sys
@@ -33,7 +32,7 @@ if not args.gee:
 import modules.products as cat
 
 warnings=[]; problems=[]; rows=[]
-valid_kinds={'fire_modis','fire_viirs','fire_goes','maiac_aod','precip_sum','precip_era5land_sum','lst_modis','ndvi_sentinel2','static_image','static_collection','categorical_last','mean_collection'}
+valid_kinds={'fire_modis','fire_viirs','fire_goes','maiac_aod','precip_sum','precip_era5land_sum','lst_modis','ndvi_sentinel2','static_image','static_collection','categorical_last','mean_collection','soil_moisture_smap'}
 for key,p in cat.PRODUCTS.items():
     local=[]
     if key!=p.key: local.append('Chave do dicionário diferente de key')

@@ -375,7 +375,7 @@ def regional_selector_ui(region_name: str):
             st.stop()
         default_city = "Itajubá" if "Itajubá" in cities else cities[0]
         city_name = st.selectbox("Cidade do Brasil", cities, index=cities.index(default_city))
-        st.caption("Limite municipal proveniente da base administrativa GAUL disponível no GEE.")
+        st.caption("Limite municipal da base administrativa GAUL 2025 (FAO), disponível no GEE.")
 
     elif normalized == "Retângulo personalizado":
         bounds = custom_bounds_ui()
@@ -400,7 +400,9 @@ def product_card(icon: str, title: str, text: str, footer: str) -> None:
 def product_card_button(product_name: str, icon: str, title: str, text: str, footer: str) -> None:
     short_text = text if len(text) <= 155 else text[:152].rsplit(" ", 1)[0] + "…"
     product_card(icon, title, short_text, footer)
-    if st.button(f"Explorar: {title}", key=f"home_open_{safe_filename(product_name)}", width="stretch"):
+    # O título já aparece no card; um rótulo curto não é cortado no botão.
+    if st.button("Abrir no mapa →", key=f"home_open_{safe_filename(product_name)}", width="stretch",
+                 help=f"Abrir {title} em Mapas interativos"):
         # Define explicitamente os estados da página de mapas. Isso evita que o
         # selectbox volte ao primeiro produto no rerun seguinte.
         st.session_state["produto_rapido"] = product_name

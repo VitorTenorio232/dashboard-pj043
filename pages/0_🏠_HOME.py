@@ -96,7 +96,7 @@ ICONS = {
     "fire_modis": "🔥", "fire_viirs": "🔥", "fire_goes": "🛰️", "maiac_aod": "🌫️",
     "mean_collection": "🧪", "lst_modis": "🌡️", "ndvi_sentinel2": "🌿",
     "precip_sum": "🌧️", "precip_era5land_sum": "🌧️", "static_image": "⛰️",
-    "static_collection": "🏙️", "categorical_last": "🗺️",
+    "static_collection": "🏙️", "categorical_last": "🗺️", "soil_moisture_smap": "💧",
 }
 
 def get_theme(prod):

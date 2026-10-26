@@ -13,6 +13,41 @@ import ee
 from modules.products import PRODUCTS, LANDCOVER_PALETTE
 
 TILE_SIZE = 256
+GEOTIFF_LIMIT_MB = 48  # getDownloadURL recusa pedidos acima de 50.331.648 bytes.
+_METERS_PER_DEGREE = 111_319.49
+# Medido contra o GEE (Minas Gerais, 368 m e 460 m): o tamanho real do pedido fica ~12,7% acima
+# da conta largura × altura × 8 bytes.
+_GEE_REQUEST_OVERHEAD = 1.13
+
+
+def geotiff_size_estimate(region_bounds, scale_m: int, bytes_per_pixel: int = 8) -> tuple[float, int]:
+    """Tamanho aproximado (MB) do GeoTIFF em EPSG:4326 e a menor escala (m) que cabe no limite.
+
+    ``region_bounds`` são as coordenadas de ``region.bounds().getInfo()``. Em EPSG:4326 o GEE
+    converte a escala em graus pelo equador, então a largura não leva cosseno da latitude.
+    Usa 8 bytes por pixel (float64), o tipo das médias e somas do Earth Engine.
+    """
+    ring = region_bounds[0]
+    lons = [point[0] for point in ring]
+    lats = [point[1] for point in ring]
+    width_px = ceil((max(lons) - min(lons)) * _METERS_PER_DEGREE / scale_m)
+    height_px = ceil((max(lats) - min(lats)) * _METERS_PER_DEGREE / scale_m)
+    size_mb = max(width_px, 1) * max(height_px, 1) * bytes_per_pixel * _GEE_REQUEST_OVERHEAD / 1024 ** 2
+    return size_mb, suggested_scale_for_size(scale_m, size_mb)
+
+
+def suggested_scale_for_size(scale_m: int, size_mb: float) -> int:
+    """Menor escala (com folga de 5%, arredondada a 10 m) que deixa o pedido abaixo do limite."""
+    factor = (size_mb / GEOTIFF_LIMIT_MB) ** 0.5
+    return scale_m if factor <= 1 else int(ceil(scale_m * factor * 1.05 / 10) * 10)
+
+
+def request_size_from_error(message: str) -> float | None:
+    """Lê o tamanho (MB) de 'Total request size (N bytes) must be less than...' do GEE."""
+    import re
+
+    match = re.search(r"Total request size \((\d+) bytes\)", message)
+    return int(match.group(1)) / 1024 ** 2 if match else None
 
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
@@ -209,7 +244,6 @@ def _font(size, bold=False):
     Nunca usa silenciosamente a fonte bitmap minuscula do Pillow: isso
     quebrava tamanhos e acentos nos boletins do VIGIA no Streamlit Cloud.
     """
-    from functools import lru_cache
     from pathlib import Path
     from PIL import ImageFont
 
@@ -267,7 +301,7 @@ def render_board(
 ) -> bytes:
     """Composição determinística para teste visual sem conexão com GEE."""
     from PIL import Image, ImageDraw
-    from modules.products import PRODUCTS, LANDCOVER_VALUES
+    from modules.products import LANDCOVER_VALUES
 
     product = PRODUCTS[product_name]
     is_landcover = product_name == 'Cobertura do Solo'
@@ -286,8 +320,15 @@ def render_board(
 
     # Faixa superior: informação à esquerda, marca à direita; evita colisão.
     label = product.label
-    for idx, piece in enumerate(_wrap(d, label, f_title, 1040)[:2]):
-        d.text((60, 28 + idx * 38), piece, font=f_title, fill=ink)
+    title_lines = _wrap(d, label, f_title, 1040)
+    title_gap = 38
+    if len(title_lines) > 1:
+        # Títulos longos: fonte menor para as duas linhas não invadirem o subtítulo.
+        f_title, title_gap = _font(24, True), 30
+        title_lines = _wrap(d, label, f_title, 1040)
+    for idx, piece in enumerate(title_lines[:2]):
+        d.text((60, 24 + idx * title_gap), piece, font=f_title, fill=ink)
+    sub_top = 24 + min(len(title_lines), 2) * title_gap + (24 if len(title_lines) == 1 else 10)
     # VIGIA sidebar/export logo v5.5.10 — marca visual do relatório.
     try:
         from pathlib import Path
@@ -305,8 +346,9 @@ def render_board(
            'MONITORAMENTO AMBIENTAL', font=f_small, fill=muted)
     period = 'Produto estático' if not product.temporal else f'{start_text} a {end_text}'
     header_sub = f'Área: {region_label}   |   Período: {period}   |   Fundo: {basemap}'
-    for idx, piece in enumerate(_wrap(d, header_sub, f_sub, 1120)[:2]):
-        d.text((60, 86 + idx * 23), piece, font=f_sub, fill=muted)
+    sub_limit = 2 if len(title_lines) == 1 else 1
+    for idx, piece in enumerate(_wrap(d, header_sub, f_sub, 1120)[:sub_limit]):
+        d.text((60, sub_top + idx * 23), piece, font=f_sub, fill=muted)
 
     # Mapa: grade 1450×720; recebe exatamente o fundo escolhido.
     d.rounded_rectangle((55, 135, 1545, 897), radius=17, fill=surface, outline=edge, width=2)
@@ -360,7 +402,7 @@ def render_board(
         for frac in (0,.25,.5,.75,1):
             v = vmin + (vmax-vmin)*frac
             # Evita rstrip remover o próprio zero (erro observado em versões anteriores).
-            label = f'{v:.4g}'
+            label = f'{v:.4g}'.replace('.', ',')
             xp = bx + bw*frac
             d.line((xp,by+bh,xp,by+bh+6), fill=muted)
             d.text((xp-d.textlength(label,font=f_small)/2,by+bh+9),label,font=f_small,fill=muted)

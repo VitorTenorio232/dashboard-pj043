@@ -1,6 +1,6 @@
-# Catálogo técnico dos produtos do SIMQA
+# Catálogo técnico dos produtos do VIGIA
 
-A data final informada na interface é tratada como **inclusiva**. Produtos estáticos não exibem campos de data. Para coleções temporais ativas, o SIMQA consulta a última cena disponível diretamente no Google Earth Engine e limita automaticamente o calendário.
+A data final informada na interface é tratada como **inclusiva**. Produtos estáticos não exibem campos de data. Para coleções temporais ativas, o VIGIA consulta a última cena disponível diretamente no Google Earth Engine e limita automaticamente o calendário.
 
 ## FIRMS / MODIS
 
@@ -83,6 +83,18 @@ O produto utilizado é `UCSB-CHC/CHIRPS/V3/DAILY_RNL`. A data máxima não é fi
 
 O produto utilizado é `ECMWF/ERA5_LAND/HOURLY`. A data máxima não é fixada no código: ela é consultada diretamente no Earth Engine. Como a coleção é horária, a interface também mostra o horário UTC da última cena e avisa quando o último dia pode estar incompleto. O ERA5-Land é uma **reanálise**, e não uma medição direta de precipitação.
 
+
+## NASA / SMAP
+
+| Produto | Disponibilidade | Resolução/escala | Cálculo no mapa |
+|---|---:|---:|---|
+| Umidade do solo superficial — SMAP L3 9 km | 2015-03-31 – última cena detectada automaticamente | 9000 m | Usa `soil_moisture_am` e `soil_moisture_pm` só onde `retrieval_qual_flag` = 0 (qualidade recomendada); faz a média das passagens válidas de cada dia e depois a média no período. Unidade: m³/m³. |
+| Anomalia de umidade do solo — SMAP L3 9 km (experimental) | 2015-03-31 – última cena detectada automaticamente | 9000 m | Mesmo procedimento com `soil_moisture_am_anomaly` e `soil_moisture_pm_anomaly` (média móvel de 30 dias menos o mesmo período de 2015 em diante, sem o próprio ano). |
+
+O produto utilizado é `NASA/SMAP/SPL3SMP_E/006` (cobre 2015 em diante; não é preciso juntar com a v005).
+O filtro de qualidade deixa sem dado áreas de vegetação densa (boa parte da Amazônia), água, cidades e solo
+congelado — nessas áreas a estimativa do SMAP não é confiável. Em períodos de 1–2 dias pode haver faixas sem
+passagem do satélite.
 
 ## Sentinel-2
 

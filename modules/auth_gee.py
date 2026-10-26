@@ -11,13 +11,24 @@ import ee
 import streamlit as st
 
 
+def _earthengine_secrets() -> dict | None:
+    """Lê a seção [earthengine] dos Secrets; sem secrets.toml, devolve None."""
+    try:
+        if "earthengine" in st.secrets:
+            return dict(st.secrets["earthengine"])
+    except Exception:
+        # Streamlit lança StreamlitSecretNotFoundError quando não há nenhum secrets.toml.
+        pass
+    return None
+
+
 @st.cache_resource(show_spinner=False)
 def initialize_gee() -> bool:
     """Inicializa o Google Earth Engine localmente ou no Streamlit Cloud."""
     temporary_key_path: str | None = None
     try:
-        if "earthengine" in st.secrets:
-            info = dict(st.secrets["earthengine"])
+        info = _earthengine_secrets()
+        if info is not None:
             project_id = info.pop("gee_project_id", None) or info.get("project_id")
             if not project_id:
                 raise ValueError("O campo gee_project_id/project_id não foi encontrado nos Secrets.")

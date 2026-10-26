@@ -3,7 +3,6 @@ python -m unittest discover -s tests -p 'test_layout_offline.py'
 """
 from __future__ import annotations
 from io import BytesIO
-from pathlib import Path
 import unittest
 from PIL import Image
 from modules.export_image import render_board, png_to_jpeg, _fit_view
@@ -27,7 +26,7 @@ class TestVigiaVisual(unittest.TestCase):
         self.assertGreater(bbox[2],-60)
 
     def test_scalas_fixadas_no_catalogo(self):
-        self.assertEqual(len(PRODUCTS),23)
+        self.assertEqual(len(PRODUCTS),25)
         for p in PRODUCTS.values():
             self.assertLess(p.vis['min'],p.vis['max'])
             self.assertTrue(p.vis['palette'])

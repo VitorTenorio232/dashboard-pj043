@@ -7,7 +7,10 @@ import pandas as pd
 import streamlit as st
 from modules.auth_gee import initialize_gee
 from modules.maps import BASEMAPS, make_map, visual_image_with_overlays, _display_image_and_vis, summarize_image
-from modules.export_image import styled_map_bytes, png_to_jpeg
+from modules.export_image import (
+    GEOTIFF_LIMIT_MB, geotiff_size_estimate, png_to_jpeg, request_size_from_error,
+    styled_map_bytes, suggested_scale_for_size,
+)
 from modules.products import PRODUCTS, image_count, period_image, safe_filename
 from modules.regions import default_overlays, get_region, overlay_options, region_display_name, region_options
 from modules.ui import (
@@ -89,8 +92,28 @@ with left:
                 metadata_df = pd.DataFrame([metadata])
                 links: dict[str, str] = {}
                 file_payloads: dict[str, bytes] = {}
+                notes: list[str] = []
                 if want_tif:
-                    links["GeoTIFF"] = image.getDownloadURL({"name": base_name, "scale": int(scale), "region": region_bounds, "crs": "EPSG:4326", "filePerBand": False, "format": "GEO_TIFF"})
+                    estimated_mb, suggested_scale = geotiff_size_estimate(region_bounds, int(scale))
+                    if estimated_mb > GEOTIFF_LIMIT_MB:
+                        notes.append(
+                            f"GeoTIFF não gerado: na escala de {int(scale):,} m o arquivo teria ~{estimated_mb:,.0f} MB "
+                            f"(limite do Earth Engine: {GEOTIFF_LIMIT_MB} MB). Use escala de pelo menos "
+                            f"{suggested_scale:,} m ou uma área menor.".replace(",", ".")
+                        )
+                    else:
+                        try:
+                            links["GeoTIFF"] = image.getDownloadURL({"name": base_name, "scale": int(scale), "region": region_bounds, "crs": "EPSG:4326", "filePerBand": False, "format": "GEO_TIFF"})
+                        except Exception as tif_exc:
+                            real_mb = request_size_from_error(str(tif_exc))
+                            if real_mb is not None:
+                                notes.append(
+                                    f"GeoTIFF não gerado: o arquivo teria ~{real_mb:,.0f} MB (limite: {GEOTIFF_LIMIT_MB} MB). "
+                                    f"Use escala de pelo menos {suggested_scale_for_size(int(scale), real_mb):,} m "
+                                    "ou uma área menor.".replace(",", ".")
+                                )
+                            else:
+                                notes.append(f"GeoTIFF não pôde ser preparado: {tif_exc}")
                 if want_png or want_jpeg:
                     visual = visual_image_with_overlays(image, product_name, region, overlays, region_name=region_name, country_name=country_name, admin1_name=admin1_name, city_name=city_name)
                     _, vis = _display_image_and_vis(product_name, image, region)
@@ -102,33 +125,49 @@ with left:
                         if want_jpeg:
                             file_payloads["JPEG"] = png_to_jpeg(board_png)
                     except Exception as thumb_exc:
-                        st.warning("PNG/JPEG não puderam ser preparados nesta tentativa. Os demais formatos continuam disponíveis.")
-                        st.caption(f"Detalhe técnico da exportação: {type(thumb_exc).__name__}: {thumb_exc}")
+                        notes.append(
+                            "PNG/JPEG não puderam ser preparados nesta tentativa; os demais formatos continuam disponíveis. "
+                            f"Detalhe técnico: {type(thumb_exc).__name__}: {thumb_exc}"
+                        )
                 html_bytes = None
                 if want_html:
                     map_object, _, _ = make_map(product_name, start_text, end_text, region_name, bounds=bounds, overlays=overlays, basemap=basemap, country_name=country_name, admin1_name=admin1_name, city_name=city_name)
                     html_bytes = map_object.get_root().render().encode("utf-8")
-            st.success("Opções de download geradas.")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                if "GeoTIFF" in links:
-                    st.link_button("Baixar GeoTIFF", links["GeoTIFF"], width="stretch")
-                if "PNG" in file_payloads:
-                    st.download_button("Baixar PNG", file_payloads["PNG"], file_name=f"{base_name}.png", mime="image/png", width="stretch")
-            with c2:
-                if "JPEG" in file_payloads:
-                    st.download_button("Baixar JPEG", file_payloads["JPEG"], file_name=f"{base_name}.jpg", mime="image/jpeg", width="stretch")
-                if want_csv:
-                    st.download_button("Baixar CSV de metadados", metadata_df.to_csv(index=False).encode("utf-8"), file_name=f"{base_name}_metadados.csv", mime="text/csv", width="stretch")
-            with c3:
-                if want_json:
-                    st.download_button("Baixar JSON de metadados", json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"), file_name=f"{base_name}_metadados.json", mime="application/json", width="stretch")
-                if html_bytes is not None:
-                    st.download_button("Baixar HTML do mapa", html_bytes, file_name=f"{base_name}_mapa.html", mime="text/html", width="stretch")
-            st.markdown("### Metadados")
-            st.dataframe(metadata_df, width="stretch", hide_index=True)
+            # Guardado na sessão: clicar num botão de download refaz a página e, antes,
+            # apagava todos os outros botões gerados.
+            st.session_state["vigia_downloads"] = {
+                "base_name": base_name, "product": product_name, "links": links, "files": file_payloads,
+                "html": html_bytes, "metadata": metadata, "notes": notes,
+                "csv": want_csv, "json": want_json,
+            }
         except Exception as exc:
             st.error("Não foi possível gerar os downloads com os filtros selecionados.")
             st.exception(exc)
-    else:
+
+    result = st.session_state.get("vigia_downloads")
+    if not result:
         st.info("Escolha os filtros e clique em **Gerar opções de download**.")
+    else:
+        base_name, metadata = result["base_name"], result["metadata"]
+        metadata_df = pd.DataFrame([metadata])
+        st.success(f"Arquivos prontos: **{PRODUCTS[result['product']].label}** — {metadata['regiao']}.")
+        for note in result["notes"]:
+            st.warning(note)
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            if "GeoTIFF" in result["links"]:
+                st.link_button("Baixar GeoTIFF", result["links"]["GeoTIFF"], width="stretch")
+            if "PNG" in result["files"]:
+                st.download_button("Baixar PNG", result["files"]["PNG"], file_name=f"{base_name}.png", mime="image/png", width="stretch", on_click="ignore")
+        with c2:
+            if "JPEG" in result["files"]:
+                st.download_button("Baixar JPEG", result["files"]["JPEG"], file_name=f"{base_name}.jpg", mime="image/jpeg", width="stretch", on_click="ignore")
+            if result["csv"]:
+                st.download_button("Baixar CSV de metadados", metadata_df.to_csv(index=False).encode("utf-8"), file_name=f"{base_name}_metadados.csv", mime="text/csv", width="stretch", on_click="ignore")
+        with c3:
+            if result["json"]:
+                st.download_button("Baixar JSON de metadados", json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"), file_name=f"{base_name}_metadados.json", mime="application/json", width="stretch", on_click="ignore")
+            if result["html"] is not None:
+                st.download_button("Baixar HTML do mapa", result["html"], file_name=f"{base_name}_mapa.html", mime="text/html", width="stretch", on_click="ignore")
+        st.markdown("### Metadados")
+        st.dataframe(metadata_df, width="stretch", hide_index=True)

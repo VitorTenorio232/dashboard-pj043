@@ -11,19 +11,35 @@ V3.3.2:
 
 from __future__ import annotations
 
+import unicodedata
+
 import ee
 import streamlit as st
 
 
-GAUL0 = "FAO/GAUL_SIMPLIFIED_500m/2015/level0"
-GAUL1 = "FAO/GAUL_SIMPLIFIED_500m/2015/level1"
-GAUL2 = "FAO/GAUL_SIMPLIFIED_500m/2015/level2"
+# Países: LSIB (Departamento de Estado dos EUA). Estados e municípios: GAUL 2025 da FAO, que tem
+# nomes com acento e substitui a GAUL 2015 (descontinuada no Earth Engine e sem nível de país em 2025).
+COUNTRIES = "USDOS/LSIB_SIMPLE/2017"
+COUNTRY_FIELD = "country_na"
+GAUL1 = "FAO/GAUL_SIMPLIFIED_500m/2025/level1"
+GAUL2 = "FAO/GAUL_SIMPLIFIED_500m/2025/level2"
+GAUL0_FIELD, GAUL1_FIELD, GAUL2_FIELD = "GAUL0_NAME", "GAUL1_NAME", "GAUL2_NAME"
 
 SA_COUNTRIES = [
     "Argentina", "Bolivia", "Brazil", "Chile", "Colombia", "Ecuador",
     "Guyana", "Paraguay", "Peru", "Suriname", "Uruguay", "Venezuela",
     "French Guiana",
 ]
+
+# Nome exibido/LSIB → nome na GAUL 2025, quando diferem.
+GAUL_COUNTRY_NAMES = {
+    "Bolivia": "Bolivia (Plurinational State of)",
+    "Venezuela": "Venezuela (Bolivarian Republic Of)",
+}
+
+
+def _gaul_country(country_name: str) -> str:
+    return GAUL_COUNTRY_NAMES.get(country_name, country_name)
 
 
 def south_america_bbox():
@@ -89,7 +105,7 @@ def default_overlays(region_name: str | None = None) -> list[str]:
 
 
 def south_america_countries_fc() -> ee.FeatureCollection:
-    return ee.FeatureCollection(GAUL0).filter(ee.Filter.inList("ADM0_NAME", SA_COUNTRIES))
+    return ee.FeatureCollection(COUNTRIES).filter(ee.Filter.inList(COUNTRY_FIELD, SA_COUNTRIES))
 
 
 def south_america_geometry():
@@ -102,7 +118,7 @@ def south_america_country_names() -> list[str]:
 
 
 def country_fc(country_name: str) -> ee.FeatureCollection:
-    return ee.FeatureCollection(GAUL0).filter(ee.Filter.eq("ADM0_NAME", country_name))
+    return ee.FeatureCollection(COUNTRIES).filter(ee.Filter.eq(COUNTRY_FIELD, country_name))
 
 
 def country_geometry(country_name: str):
@@ -110,45 +126,51 @@ def country_geometry(country_name: str):
 
 
 def admin1_fc(country_name: str) -> ee.FeatureCollection:
-    return ee.FeatureCollection(GAUL1).filter(ee.Filter.eq("ADM0_NAME", country_name))
+    return ee.FeatureCollection(GAUL1).filter(ee.Filter.eq(GAUL0_FIELD, _gaul_country(country_name)))
 
 
 def selected_admin1_fc(country_name: str, admin1_name: str) -> ee.FeatureCollection:
+    return admin1_fc(country_name).filter(ee.Filter.eq(GAUL1_FIELD, admin1_name))
+
+
+def admin2_fc(country_name: str, admin1_name: str) -> ee.FeatureCollection:
     return (
-        ee.FeatureCollection(GAUL1)
-        .filter(ee.Filter.eq("ADM0_NAME", country_name))
-        .filter(ee.Filter.eq("ADM1_NAME", admin1_name))
+        ee.FeatureCollection(GAUL2)
+        .filter(ee.Filter.eq(GAUL0_FIELD, _gaul_country(country_name)))
+        .filter(ee.Filter.eq(GAUL1_FIELD, admin1_name))
     )
 
 
 def selected_city_fc(country_name: str, admin1_name: str, city_name: str) -> ee.FeatureCollection:
-    return (
-        ee.FeatureCollection(GAUL2)
-        .filter(ee.Filter.eq("ADM0_NAME", country_name))
-        .filter(ee.Filter.eq("ADM1_NAME", admin1_name))
-        .filter(ee.Filter.eq("ADM2_NAME", city_name))
-    )
+    return admin2_fc(country_name, admin1_name).filter(ee.Filter.eq(GAUL2_FIELD, city_name))
 
 
 def selected_region_fc(region) -> ee.FeatureCollection:
     return ee.FeatureCollection([ee.Feature(region)])
 
 
-@st.cache_data(show_spinner=False)
+_UNKNOWN_NAMES = {"Administrative Unit Not Available", "Name Unknown"}
+
+
+def _sort_key(name: str) -> str:
+    """Ordem alfabética ignorando acentos ("São Paulo" antes de "Sergipe")."""
+    return "".join(c for c in unicodedata.normalize("NFKD", name.casefold()) if not unicodedata.combining(c))
+
+
+def _clean_names(names) -> list[str]:
+    return sorted({str(x) for x in names if x and str(x) not in _UNKNOWN_NAMES}, key=_sort_key)
+
+
+@st.cache_data(ttl="7d", show_spinner=False)
 def admin1_names(country_name: str) -> list[str]:
-    names = ee.List(admin1_fc(country_name).aggregate_array("ADM1_NAME")).distinct().sort().getInfo()
-    return [str(x) for x in names]
+    names = ee.List(admin1_fc(country_name).aggregate_array(GAUL1_FIELD)).distinct().getInfo()
+    return _clean_names(names)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl="7d", show_spinner=False)
 def admin2_names(country_name: str, admin1_name: str) -> list[str]:
-    fc = (
-        ee.FeatureCollection(GAUL2)
-        .filter(ee.Filter.eq("ADM0_NAME", country_name))
-        .filter(ee.Filter.eq("ADM1_NAME", admin1_name))
-    )
-    names = ee.List(fc.aggregate_array("ADM2_NAME")).distinct().sort().getInfo()
-    return [str(x) for x in names]
+    names = ee.List(admin2_fc(country_name, admin1_name).aggregate_array(GAUL2_FIELD)).distinct().getInfo()
+    return _clean_names(names)
 
 
 @st.cache_data(show_spinner=False)

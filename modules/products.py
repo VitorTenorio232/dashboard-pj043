@@ -29,6 +29,8 @@ SPECTRAL_PALETTE = [
 ]
 
 ATMOS_PALETTE = ["000004", "2c115f", "721f81", "b73779", "f1605d", "feb078", "fcfdbf"]
+SOIL_MOISTURE_PALETTE = ["8c510a", "d8b365", "f6e8c3", "c7eae5", "5ab4ac", "01665e", "08306b"]
+SOIL_ANOMALY_PALETTE = ["8c510a", "d8b365", "f6e8c3", "f7f7f7", "c7eae5", "5ab4ac", "01665e"]
 FIRE_PALETTE = ["ffffcc", "ffeda0", "fed976", "feb24c", "fd8d3c", "f03b20", "bd0026", "800026"]
 
 LANDCOVER_VALUES = [
@@ -86,6 +88,7 @@ GROUP_ORDER = [
     "Sentinel-5P OFFL",
     "CHIRPS v3 / UCSB-CHC",
     "Copernicus / ERA5-Land",
+    "NASA / SMAP",
     "Sentinel-2",
     "SRTM",
     "Copernicus Land",
@@ -421,6 +424,76 @@ PRODUCTS: dict[str, Product] = {
         cadence="Horária",
         catalog_url="https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_LAND_HOURLY",
         fallback_to_latest=False,
+        default_days=7,
+    ),
+    "Umidade do Solo SMAP": Product(
+        key="Umidade do Solo SMAP",
+        label="Umidade do solo superficial — SMAP L3 9 km",
+        group="NASA / SMAP",
+        source="NASA SMAP L3 Radiometer Global Daily 9 km (SPL3SMP_E v006) / NSIDC",
+        collection="NASA/SMAP/SPL3SMP_E/006",
+        image_id=None,
+        band=["soil_moisture_am", "soil_moisture_pm"],
+        out_band="soil_moisture",
+        unit="m³/m³",
+        scale=9000,
+        statistic="média",
+        reducer_name="mean",
+        vis={"min": 0, "max": 0.5, "palette": SOIL_MOISTURE_PALETTE},
+        kind="soil_moisture_smap",
+        temporal=True,
+        user_note=(
+            "Fração volumétrica de água nos primeiros ~5 cm do solo, estimada pelo radiômetro em banda L "
+            "do satélite SMAP. Valores perto de 0,05 indicam solo seco; acima de 0,35, solo muito úmido."
+        ),
+        method_note=(
+            "Usa as passagens das 6h (AM) e 18h (PM, hora local) de cada dia, mantendo apenas pixels com "
+            "retrieval_qual_flag = 0 (qualidade recomendada). Em cada dia, faz a média das passagens "
+            "válidas e, depois, a média no período."
+        ),
+        limitations=(
+            "Representa só a camada superficial (~5 cm), não a zona de raízes. A qualidade recomendada exclui "
+            "áreas com muita vegetação (grande parte da Amazônia), água, áreas urbanas e solo congelado; "
+            "nessas áreas o mapa fica vazio. Cada passagem cobre faixas do globo, então períodos de 1–2 dias "
+            "podem ter lacunas — prefira 3 dias ou mais."
+        ),
+        availability_start="2015-03-31",
+        cadence="Diária (passagens 6h e 18h)",
+        catalog_url="https://developers.google.com/earth-engine/datasets/catalog/NASA_SMAP_SPL3SMP_E_006",
+        default_days=7,
+    ),
+    "Anomalia Umidade SMAP": Product(
+        key="Anomalia Umidade SMAP",
+        label="Anomalia de umidade do solo — SMAP L3 9 km (experimental)",
+        group="NASA / SMAP",
+        source="NASA SMAP L3 Radiometer Global Daily 9 km (SPL3SMP_E v006) / NSIDC",
+        collection="NASA/SMAP/SPL3SMP_E/006",
+        image_id=None,
+        band=["soil_moisture_am_anomaly", "soil_moisture_pm_anomaly"],
+        out_band="soil_moisture_anomaly",
+        unit="m³/m³",
+        scale=9000,
+        statistic="média",
+        reducer_name="mean",
+        vis={"min": -0.1, "max": 0.1, "palette": SOIL_ANOMALY_PALETTE},
+        kind="soil_moisture_smap",
+        temporal=True,
+        user_note=(
+            "Quanto o solo está mais úmido (azul) ou mais seco (marrom) que o normal para a época do ano. "
+            "Útil para acompanhar secas e excessos de chuva."
+        ),
+        method_note=(
+            "Usa as bandas soil_moisture_am_anomaly e soil_moisture_pm_anomaly, que comparam a média móvel "
+            "de 30 dias com o mesmo período de 2015 em diante (excluindo o próprio ano). Mantém só pixels com "
+            "retrieval_qual_flag = 0, faz a média das passagens válidas de cada dia e, depois, do período."
+        ),
+        limitations=(
+            "Banda marcada como experimental pela NASA/Google. Por usar média de 30 dias, reage devagar a "
+            "chuvas isoladas. As mesmas lacunas da umidade do solo se aplicam (vegetação densa, água, cidades)."
+        ),
+        availability_start="2015-03-31",
+        cadence="Diária (média móvel de 30 dias)",
+        catalog_url="https://developers.google.com/earth-engine/datasets/catalog/NASA_SMAP_SPL3SMP_E_006",
         default_days=7,
     ),
     "Relevo": Product(
@@ -891,6 +964,16 @@ def _era5land_hourly_accumulation(img: ee.Image, product: Product) -> ee.Image:
     return img.select(product.band).multiply(1000.0).rename(product.out_band)
 
 
+def _smap_daily_image(img: ee.Image, product: Product) -> ee.Image:
+    """Média das passagens AM/PM do dia, só com qualidade recomendada (flag = 0)."""
+    passes = []
+    for band in product.band:
+        overpass = "am" if "_am" in band else "pm"
+        good = img.select(f"retrieval_qual_flag_{overpass}").eq(0)
+        passes.append(img.select(band).updateMask(good).rename(product.out_band))
+    return ee.ImageCollection(passes).mean().rename(product.out_band)
+
+
 def _static_image(product: Product) -> ee.Image:
     return ee.Image(product.image_id).select(product.band).rename(product.out_band)
 
@@ -930,6 +1013,9 @@ def period_image(product_name: str, start: str, end: str, region) -> ee.Image:
 
         elif product.kind == "precip_era5land_sum":
             img = col.map(lambda source: _era5land_hourly_accumulation(source, product)).sum().rename(product.out_band)
+
+        elif product.kind == "soil_moisture_smap":
+            img = col.map(lambda source: _smap_daily_image(source, product)).mean().rename(product.out_band)
 
         elif product.kind == "lst_modis":
             img = col.select(product.band).mean().multiply(0.02).subtract(273.15).rename(product.out_band)

@@ -1,27 +1,28 @@
-backups_v3/
-backups_v3_1_1/
-backups_v3_1_2/
-backups_v3_2/
-backups_v3_2_1/
-backups_v3_2_2/
-backups_v3_3/
-backups_v3_3_2/
-backups_v3_3_3/
-backups_v3_3_4/
-backups_v3_4/
-
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-
+*.py[cod]
 .venv/
+venv/
+.pytest_cache/
+.ruff_cache/
 
+# Credenciais — nunca enviar ao GitHub
 .streamlit/secrets.toml
 *.json
-venv/
-.vscode/
-.DS_Store
-*:Zone.Identifier
+!.devcontainer/devcontainer.json
+*.pem
+*.p12
 
+# Metadados do Windows/WSL ao baixar arquivos (ex.: "chave.json:Zone.Identifier")
+*Zone.Identifier
+
+# Editores e sistema
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db
+
+# Saídas locais e backups antigos dos instaladores
 auditoria_resultados/
+backups_v*/

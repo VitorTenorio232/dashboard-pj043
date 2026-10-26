@@ -42,6 +42,9 @@ st.markdown(
     - **ERA5-Land Hourly:** é usado como alternativa para precipitação recente. O Earth Engine fornece
       precipitação horária em metros; o VIGIA converte para milímetros e soma as horas do período.
       Por ser uma reanálise, deve ser interpretado de forma diferente de uma medição direta de chuva.
+    - **Umidade do solo SMAP:** fração volumétrica de água nos primeiros ~5 cm do solo (m³/m³), com
+      filtro de qualidade recomendada. Áreas de vegetação densa, como boa parte da Amazônia, ficam sem
+      dado porque a estimativa não é confiável ali. A anomalia compara com o normal da época do ano.
     - **Produtos estáticos:** relevo e modificação humana não possuem seletor de data porque o catálogo
       utilizado não representa uma série temporal operacional.
     - **NRTI e NRT:** são adequados para acompanhamento rápido, mas podem sofrer revisões e não

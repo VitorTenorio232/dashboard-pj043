@@ -1,36 +1,84 @@
 # VIGIA — Visualização Integrada de Gases, Incêndios e Atmosfera
 
-**Projeto PJ043 · Interface v5.5**
+**Projeto PJ043** · Painel web para explorar dados de queimadas, composição atmosférica, umidade do solo
+e outras variáveis ambientais, processados sob demanda no **Google Earth Engine**. Feito com Python e Streamlit.
 
-Plataforma web para exploração e divulgação de dados de queimadas, composição atmosférica e variáveis ambientais, processados sob demanda no Google Earth Engine.
+[![Testes do site](../../actions/workflows/tests.yml/badge.svg)](../../actions/workflows/tests.yml)
 
-## Funcionalidades
+Site: <https://vigia-dashboard.streamlit.app/>
 
-- HOME editorial com exemplos reais e catálogo pesquisável
-- Mapas interativos com recortes por país, estado, município e coordenadas
-- Séries temporais e downloads de produtos ambientais
-- Fontes FIRMS, VIIRS, GOES, Sentinel-5P, MODIS, CHIRPS, ERA5-Land e outras
-- Painéis com fonte, unidade, resolução, método e limitações
+## O que o site oferece
 
-## Execução
+| Página | O que faz |
+|---|---|
+| 🏠 **HOME** | Catálogo pesquisável dos 25 produtos, separados em focos de calor, atmosfera e ambiente/superfície. |
+| 🗺️ **Mapas interativos** | Mapa do produto para América do Sul, país, estado, município ou retângulo, com resumo na área e prancha PNG/JPEG. |
+| 📈 **Séries temporais** | Valor regional dia a dia (até 1 ano; 90 dias para produtos de alta resolução) ou mês a mês, com CSV. |
+| 📥 **Downloads** | GeoTIFF analítico, prancha PNG/JPEG, mapa HTML e metadados CSV/JSON. |
+| ℹ️ **Sobre** | Como interpretar cada produto e ficha técnica de cada um. |
+
+### Fontes de dados
+
+FIRMS (MODIS e VIIRS), GOES-16/19 (focos), MODIS (AOD MAIAC e temperatura da superfície), Sentinel-5P
+(gases e aerossóis, NRTI e OFFL), CHIRPS v3 e ERA5-Land (precipitação), **NASA SMAP (umidade do solo e
+anomalia)**, Sentinel-2 (NDVI), SRTM (relevo), Copernicus (cobertura do solo) e gHM (modificação humana).
+Detalhes de cada produto em [CATALOGO_PRODUTOS.md](CATALOGO_PRODUTOS.md).
+
+Limites: países do **LSIB** (Departamento de Estado dos EUA); estados e municípios da **GAUL 2025** (FAO).
+
+## Rodar no seu computador
+
+Requer Python 3.11 ou mais novo e uma conta Google com acesso ao Earth Engine.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python -m venv .venv
+# Windows: .venv\Scripts\activate    |    Linux/Mac: source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+earthengine authenticate
 streamlit run app.py
 ```
 
-Configure as credenciais do Earth Engine no arquivo local `.streamlit/secrets.toml` ou no painel Secrets do Streamlit Community Cloud. **Não publique credenciais no GitHub.**
+Sem `secrets.toml`, o site usa o login do `earthengine authenticate` e o projeto da variável `EE_PROJECT`
+(padrão: o projeto do PJ043).
 
-## Atualização
+## Publicar no Streamlit Community Cloud
 
-Leia `GUIA_ATUALIZACAO.md`. O instalador V5.5 altera somente a camada visual, preservando os módulos científicos existentes e as credenciais.
+1. Em [share.streamlit.io](https://share.streamlit.io), aponte para este repositório, branch `main`, arquivo `app.py`.
+2. Em **Settings → Secrets**, cole o conteúdo de `.streamlit/secrets.toml.example` preenchido com a chave da
+   conta de serviço do Earth Engine. **Nunca envie a chave `.json` nem o `secrets.toml` ao GitHub.**
+3. Cada `push` na `main` atualiza o site automaticamente.
+
+## Estrutura
+
+```text
+app.py                  # navegação entre as páginas
+pages/                  # HOME, Mapas, Séries, Downloads, Sobre
+modules/
+  products.py           # catálogo dos produtos e cálculo de cada um no Earth Engine
+  regions.py            # países, estados, municípios e retângulo
+  maps.py               # mapa Folium, resumo na área e contornos
+  series.py             # séries temporais (consultas em lote ao GEE)
+  export_image.py       # prancha PNG/JPEG e estimativa do GeoTIFF
+  ui.py, auth_gee.py    # componentes da interface e login no GEE
+assets/                 # logos, GIF da HOME e CSS
+tests/                  # testes automáticos (não precisam de credenciais)
+tools/auditar_catalogo.py  # auditoria do catálogo (opcional: --gee para checar datas reais)
+docs/historico/         # notas de versões antigas
+```
+
+## Testes
+
+```bash
+python -m pytest -q                                             # testes automáticos
+python -m ruff check app.py modules pages tests tools --select F  # erros de código
+python tools/auditar_catalogo.py --project . --gee              # confere o catálogo no Earth Engine
+```
+
+Os testes rodam no GitHub a cada `push` (aba **Actions → Testes do site**).
 
 ## Aviso científico
 
-Detecções de focos de calor são observações rasterizadas que não equivalem ao número de incêndios únicos. O sistema apoia consulta e divulgação, não substitui os serviços oficiais de alerta.
+Focos de calor são detecções rasterizadas e não equivalem ao número de incêndios únicos. Produtos NRT/NRTI
+podem ser revistos. O sistema apoia consulta e divulgação; não substitui serviços oficiais de alerta.
 
-## Design
-
-Leia `DESIGN.md` para o conjunto de tokens, padrões de acessibilidade e referências externas.
+Histórico de mudanças: [CHANGELOG.md](CHANGELOG.md).

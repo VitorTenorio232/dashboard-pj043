@@ -1,0 +1,4 @@
+# Dependências do site + ferramentas de teste (usadas localmente e no GitHub Actions).
+-r requirements.txt
+pytest>=8
+ruff>=0.6

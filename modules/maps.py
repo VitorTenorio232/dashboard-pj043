@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import ee
 import folium
-import streamlit as st
 from streamlit_folium import st_folium
 
 from modules.products import LANDCOVER_PALETTE, LANDCOVER_VALUES, PRODUCTS, period_image
@@ -147,8 +146,19 @@ def _fmt_number(value: float | int | None, decimals: int = 2) -> str:
         return "n/d"
     if isinstance(value, (int,)):
         return f"{value:,}".replace(",", ".")
+    magnitude = abs(value)
+    if 0 < magnitude < 0.01:
+        # Colunas de gases (mol/m²) ficam em 1e-4–1e-5: com 2 casas viravam "0,00".
+        return f"{value:.2e}".replace(".", ",")
+    if decimals == 2 and magnitude < 1:
+        decimals = 3
     text = f"{value:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return text
+
+
+# Resumo do card: com bestEffort, o GEE aumenta a escala sozinho quando a área passaria deste
+# número de pixels (ex.: NDVI 10 m num estado inteiro levava >10 min e falhava).
+SUMMARY_MAX_PIXELS = 1e7
 
 
 def summarize_image(product_name: str, image: ee.Image, region) -> dict:
@@ -162,7 +172,7 @@ def summarize_image(product_name: str, image: ee.Image, region) -> dict:
                 reducer=ee.Reducer.frequencyHistogram(),
                 geometry=region,
                 scale=product.scale,
-                maxPixels=1e13,
+                maxPixels=SUMMARY_MAX_PIXELS,
                 bestEffort=True,
             ).getInfo() or {}
             h = hist.get(band) or {}
@@ -185,6 +195,7 @@ def summarize_image(product_name: str, image: ee.Image, region) -> dict:
 
     if product.kind.startswith("fire_"):
         try:
+            # Focos: soma exata na resolução nativa (pixels esparsos; aumentar a escala distorceria a contagem).
             stats = image.unmask(0).reduceRegion(
                 reducer=ee.Reducer.sum().combine(reducer2=ee.Reducer.max(), sharedInputs=True),
                 geometry=region,
@@ -214,7 +225,7 @@ def summarize_image(product_name: str, image: ee.Image, region) -> dict:
             reducer=ee.Reducer.minMax().combine(reducer2=ee.Reducer.mean(), sharedInputs=True),
             geometry=region,
             scale=product.scale,
-            maxPixels=1e13,
+            maxPixels=SUMMARY_MAX_PIXELS,
             bestEffort=True,
         ).getInfo() or {}
         vmin = stats.get(f"{band}_min")
