@@ -11,7 +11,7 @@ from modules.export_image import (
     GEOTIFF_LIMIT_MB, geotiff_size_estimate, png_to_jpeg, request_size_from_error,
     styled_map_bytes, suggested_scale_for_size,
 )
-from modules.products import PRODUCTS, image_count, period_image, safe_filename
+from modules.products import PRODUCTS, heavy_request_message, image_count, period_image, region_area_km2, safe_filename
 from modules.regions import default_overlays, get_region, overlay_options, region_display_name, region_options
 from modules.ui import (
     date_range_ui, landcover_legend_ui, load_css, page_title, processing_time_warning,
@@ -66,6 +66,11 @@ with left:
             with st.spinner("Preparando os produtos no Earth Engine..."):
                 start_text, end_text = query_dates(product, start, end)
                 region = get_region(region_name, bounds, country_name=country_name, admin1_name=admin1_name, city_name=city_name)
+                if product.max_area_days and start is not None and end is not None:
+                    heavy = heavy_request_message(product_name, region_area_km2(region), (end - start).days + 1)
+                    if heavy:
+                        st.warning(heavy, icon="🐢")
+                        st.stop()
                 n_images = image_count(product_name, start_text, end_text, region)
                 if n_images == 0:
                     st.warning("Nenhuma imagem foi encontrada para os filtros selecionados.")

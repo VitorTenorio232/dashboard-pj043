@@ -101,3 +101,23 @@ def test_nomes_administrativos():
     assert _gaul_country("Bolivia").startswith("Bolivia (")
     assert _gaul_country("Brazil") == "Brazil"
     assert "French Guiana" in SA_COUNTRIES
+
+
+def test_trava_de_area_do_ndvi():
+    from modules.products import heavy_request_message
+
+    minas = 586_000
+    assert heavy_request_message("NDVI", minas, 30) is None
+    assert heavy_request_message("NDVI", 300, 365) is None  # município, 1 ano
+    message = heavy_request_message("NDVI", 17_800_000, 30)  # América do Sul (retângulo)
+    assert message is not None and "2 dia" in message
+    assert "68 dia" in heavy_request_message("NDVI", minas, 90)
+    # Produtos sem limite nunca são bloqueados.
+    assert heavy_request_message("Umidade do Solo SMAP", 17_800_000, 365) is None
+
+
+def test_busca_da_ultima_data_comeca_por_janelas_recentes():
+    from modules.products import LATEST_SEARCH_WINDOWS_DAYS
+
+    assert LATEST_SEARCH_WINDOWS_DAYS[0] <= 15
+    assert list(LATEST_SEARCH_WINDOWS_DAYS) == sorted(LATEST_SEARCH_WINDOWS_DAYS)

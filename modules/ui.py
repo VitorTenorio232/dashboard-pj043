@@ -275,6 +275,12 @@ def processing_time_warning(product: Product, start: date | None, end: date | No
         return
 
     days = (end - start).days + 1
+    if product.max_area_days:
+        st.info(
+            f"{product.label} tem {product.scale} m de resolução: use um estado, município ou retângulo. "
+            "América do Sul e países grandes não são processados.",
+            icon="🔎",
+        )
     if days > 7:
         st.warning(
             f"O período selecionado possui **{days} dias**. O processamento pode levar alguns minutos, "

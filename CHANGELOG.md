@@ -1,5 +1,14 @@
 # Histórico de mudanças
 
+## 2026-10-29
+
+### Correções
+- **NDVI travava ao ser escolhido:** a busca da data mais recente varria a coleção inteira do Sentinel-2
+  (milhões de cenas) e passava de 10 minutos. Agora procura primeiro nos últimos dias (~3 s), para todos os produtos.
+- **NDVI em áreas continentais:** com a América do Sul (padrão da página) eram ~38 mil cenas e vários minutos
+  carregando. Agora o site mede área × período antes de processar e, se for pesado demais para 10 m, avisa na hora
+  e sugere área menor ou período mais curto (Minas Gerais aceita até ~2 meses).
+
 ## 2026-10-26
 
 ### Novidades

@@ -7,7 +7,8 @@ import plotly.express as px
 import streamlit as st
 
 from modules.auth_gee import initialize_gee
-from modules.products import PRODUCTS, safe_filename
+from modules.products import PRODUCTS, heavy_request_message, region_area_km2, safe_filename
+from modules.regions import get_region
 from modules.series import make_series
 from modules.ui import (
     date_range_ui,
@@ -73,15 +74,23 @@ with left:
     run_series = st.button("Gerar série temporal", type="primary", width="stretch")
     if run_series:
         try:
-            with st.spinner("Calculando no Google Earth Engine..."):
-                dataframe = make_series(
-                    product_name, start, end, region_name, frequency, bounds,
-                    country_name=country_name, admin1_name=admin1_name, city_name=city_name,
-                )
-            st.session_state["vigia_last_series"] = {
-                "df": dataframe, "product": product_name, "region": region_name,
-                "frequency": frequency,
-            }
+            heavy = None
+            if product.max_area_days and start is not None and end is not None:
+                region = get_region(region_name, bounds, country_name=country_name,
+                                    admin1_name=admin1_name, city_name=city_name)
+                heavy = heavy_request_message(product_name, region_area_km2(region), (end - start).days + 1)
+            if heavy:
+                st.warning(heavy, icon="🐢")
+            else:
+                with st.spinner("Calculando no Google Earth Engine..."):
+                    dataframe = make_series(
+                        product_name, start, end, region_name, frequency, bounds,
+                        country_name=country_name, admin1_name=admin1_name, city_name=city_name,
+                    )
+                st.session_state["vigia_last_series"] = {
+                    "df": dataframe, "product": product_name, "region": region_name,
+                    "frequency": frequency,
+                }
         except Exception as exc:
             st.error("Não foi possível gerar a série.")
             st.exception(exc)

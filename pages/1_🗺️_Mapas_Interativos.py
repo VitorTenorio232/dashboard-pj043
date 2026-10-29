@@ -6,7 +6,7 @@ from modules.auth_gee import initialize_gee
 from modules.maps import BASEMAPS, make_map, visual_image_with_overlays, _display_image_and_vis, summarize_image
 from modules.export_image import styled_map_bytes, png_to_jpeg
 from streamlit_folium import st_folium
-from modules.products import PRODUCTS, image_count, safe_filename
+from modules.products import PRODUCTS, heavy_request_message, image_count, region_area_km2, safe_filename
 from modules.regions import default_overlays, get_region, overlay_options, region_display_name, region_options
 from modules.ui import (
     date_range_ui, landcover_legend_ui, load_css, page_title,
@@ -50,8 +50,13 @@ if run:
         with st.spinner("Consultando o Google Earth Engine e preparando as camadas..."):
             start_text, end_text = query_dates(product, start, end)
             region = get_region(region_name, bounds, country_name=country_name, admin1_name=admin1_name, city_name=city_name)
-            n_images = image_count(product_name, start_text, end_text, region)
-            if n_images == 0:
+            heavy = None
+            if product.max_area_days and start is not None and end is not None:
+                heavy = heavy_request_message(product_name, region_area_km2(region), (end - start).days + 1)
+            n_images = 0 if heavy else image_count(product_name, start_text, end_text, region)
+            if heavy:
+                st.warning(heavy, icon="🐢")
+            elif n_images == 0:
                 st.warning("Nenhuma imagem disponível para esta combinação. Confira o período informado pela coleção.")
             else:
                 previous = st.session_state.get("vigia_map_result")

@@ -75,6 +75,8 @@ class Product:
     confidence_min: float | None = None
     value_scale: float = 1.0
     value_offset: float = 0.0
+    # Limite de área (km²) × dias para produtos muito pesados; None = sem limite.
+    max_area_days: float | None = None
 
 
 GROUP_ORDER = [
@@ -344,11 +346,18 @@ PRODUCTS: dict[str, Product] = {
         temporal=True,
         user_note="Índice de vegetação calculado com B8 (infravermelho próximo) e B4 (vermelho).",
         method_note="NDVI = (B8 − B4) / (B8 + B4); filtra cenas com CLOUDY_PIXEL_PERCENTAGE ≤ 40 e calcula a média.",
-        limitations="O filtro de nuvem por metadado é simples e pode manter nuvens residuais ou sombras.",
+        limitations=(
+            "O filtro de nuvem por metadado é simples e pode manter nuvens residuais ou sombras. "
+            "Por ter 10 m, o NDVI só é processado em áreas e períodos limitados (até ~2 meses para um "
+            "estado do tamanho de Minas Gerais); para o continente, use um estado, município ou retângulo."
+        ),
         availability_start="2017-03-28",
         cadence="Aproximadamente 5 dias",
         catalog_url="https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED",
         fallback_to_latest=False,
+        # Medido no GEE: Minas Gerais (586 mil km²) × 30 dias ≈ 45 s; América do Sul × 30 dias ≈ 38 mil
+        # cenas, >5 min só para o resumo e >2 min por bloco do mapa.
+        max_area_days=40_000_000,
     ),
     "Precipitação CHIRPS": Product(
         key="Precipitação CHIRPS",
@@ -846,6 +855,32 @@ def product_date_bounds(product: Product) -> tuple[date | None, date | None]:
     return start, min(end, date.today())
 
 
+def region_area_km2(region) -> float:
+    return float(ee.Geometry(region).area(maxError=1000).getInfo()) / 1e6
+
+
+def heavy_request_message(product_name: str, area_km2: float, days: int) -> str | None:
+    """Mensagem de bloqueio quando área × período passa do limite do produto; None se couber."""
+    product = PRODUCTS[product_name]
+    if not product.max_area_days or not product.temporal:
+        return None
+    if area_km2 * max(days, 1) <= product.max_area_days:
+        return None
+    max_days = int(product.max_area_days // max(area_km2, 1))
+    area_text = f"{area_km2:,.0f}".replace(",", ".")
+    if max_days >= 1:
+        hint = f"Para esta área, use no máximo **{max_days} dia(s)**, ou escolha uma área menor."
+    else:
+        hint = "Esta área é grande demais mesmo para 1 dia: escolha um estado, município ou retângulo menor."
+    return (
+        f"**{product.label}** tem resolução de {product.scale} m e ficaria minutos carregando para "
+        f"{area_text} km² × {days} dia(s). {hint}"
+    )
+
+
+LATEST_SEARCH_WINDOWS_DAYS = (10, 120, 800)
+
+
 def latest_available_timestamp(product_name: str) -> datetime | None:
     """Consulta a cena mais recente existente na coleção do Earth Engine.
 
@@ -857,7 +892,18 @@ def latest_available_timestamp(product_name: str) -> datetime | None:
     if not product.temporal or not product.collection:
         return None
 
-    value = ee.ImageCollection(product.collection).aggregate_max("system:time_start").getInfo()
+    # Procura primeiro em janelas recentes: no Sentinel-2 (milhões de cenas) o aggregate_max na
+    # coleção inteira passava de 10 minutos e travava a página ao escolher o NDVI.
+    col = ee.ImageCollection(product.collection)
+    tomorrow = date.today() + timedelta(days=1)
+    value = None
+    for days in LATEST_SEARCH_WINDOWS_DAYS:
+        window = col.filterDate((tomorrow - timedelta(days=days)).isoformat(), tomorrow.isoformat())
+        value = window.aggregate_max("system:time_start").getInfo()
+        if value is not None:
+            break
+    if value is None:
+        value = col.aggregate_max("system:time_start").getInfo()
     if value is None:
         return None
 
