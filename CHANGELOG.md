@@ -7,6 +7,9 @@
   - na prancha PNG/JPEG (Mapas e Downloads), com a latitude de referência e aviso de que, em áreas
     continentais, a distância varia com a latitude (projeção Web Mercator);
   - na página de mapas interativos, acompanhando o zoom do mapa.
+- **Legenda de cores** abaixo do mapa interativo, ao lado da barra de escala: gradiente com as cores e os
+  limites de cada produto (o último valor é "≥", pois valores acima usam a cor final) e classes coloridas
+  na cobertura do solo.
 
 ## 2026-10-29
 

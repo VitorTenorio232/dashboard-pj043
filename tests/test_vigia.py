@@ -159,3 +159,22 @@ def test_prancha_tem_barra_de_escala_entre_mapa_e_cards():
         assert dark > 200
         # Os cards começam depois da faixa: a linha logo acima deles continua com a cor de fundo.
         assert rgb.getpixel((700, 925 + SCALE_STRIP - 3)) == (244, 247, 249)
+
+
+def test_legenda_de_cores_de_todos_os_produtos():
+    from modules.ui import color_bar_html, map_legend_strip_html
+
+    for key, product in PRODUCTS.items():
+        html = color_bar_html(key, product.vis)
+        assert product.unit.split()[0] in html, key
+        if key == "Cobertura do Solo":
+            assert html.count('class="vigia-colorbar-chip"') == 21  # 23 classes menos sem dado e oceano
+            continue
+        # Gradiente com as cores do próprio produto e os limites da escala fixa.
+        for color in product.vis["palette"]:
+            assert f"#{color}" in html, key
+        assert ">" + f"{product.vis['min']:.4g}".replace(".", ",") + "<" in html, key
+        assert "≥ " + f"{product.vis['max']:.4g}".replace(".", ",") in html, key
+
+    strip = map_legend_strip_html("Umidade do Solo SMAP", PRODUCTS["Umidade do Solo SMAP"].vis, -18.6, 6.6)
+    assert "vigia-scalebar" in strip and "vigia-colorbar" in strip

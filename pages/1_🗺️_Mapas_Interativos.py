@@ -11,7 +11,7 @@ from modules.regions import default_overlays, get_region, overlay_options, regio
 from modules.ui import (
     date_range_ui, landcover_legend_ui, load_css, page_title,
     processing_time_warning, product_metadata, product_selector_ui,
-    query_dates, regional_selector_ui, scale_bar_html, sidebar_brand,
+    map_legend_strip_html, query_dates, regional_selector_ui, sidebar_brand,
 )
 
 load_css("assets/style.css")
@@ -106,8 +106,12 @@ with left:
                 st.session_state["vigia_map_view"] = {"center": center, "zoom": zoom}
                 if isinstance(center.get("lat"), (int, float)):
                     scale_lat, scale_zoom = center["lat"], zoom
-        # Barra de escala logo abaixo do mapa, antes dos cards; segue o zoom (st_folium devolve o zoom atual).
-        st.markdown(scale_bar_html(scale_lat, scale_zoom), unsafe_allow_html=True)
+        # Faixa logo abaixo do mapa, antes dos cards: barra de escala (segue o zoom devolvido pelo
+        # st_folium) e legenda de cores com a escala fixa do produto.
+        st.markdown(
+            map_legend_strip_html(previous["product"], previous["vis"], scale_lat, scale_zoom),
+            unsafe_allow_html=True,
+        )
 
         st.markdown("#### Informações do mapa")
         c1, c2, c3, c4 = st.columns(4, gap="small")

@@ -130,9 +130,23 @@ a {text-underline-offset:3px;}
 @media (max-width:700px) {.vigia-brand--official img.vigia-brand-icon {width:58px; height:58px;} .vigia-home-logo-slot{max-width:460px;}}
 
 /* Barra de escala abaixo do mapa interativo */
-.vigia-scalebar {margin: .35rem 0 1rem .2rem;}
+.vigia-scalebar {margin: 0; flex:0 1 250px;}
 .vigia-scalebar-labels {position:relative; height:1.05rem; font-size:.74rem; color:#546472;}
 .vigia-scalebar-labels span {position:absolute; transform:translateX(-50%); white-space:nowrap;}
 .vigia-scalebar-bar {display:flex; height:9px; border:1px solid #132c38;}
 .vigia-scalebar-bar span + span {border-left:1px solid #132c38;}
 .vigia-scalebar p {margin:.3rem 0 0; font-size:.74rem; color:#546472;}
+
+/* Faixa abaixo do mapa interativo: escala gráfica + legenda de cores */
+.vigia-map-strip {display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between;
+  gap:1rem 2.5rem; margin:.4rem 0 1.1rem .2rem;}
+.vigia-colorbar {flex:1 1 260px; max-width:560px; font-size:.74rem; color:#546472;}
+.vigia-colorbar strong {display:block; margin-bottom:.3rem; color:#132c38; font-weight:600;}
+.vigia-colorbar-bar {height:12px; border:1px solid #c9d4da; border-radius:2px;}
+.vigia-colorbar-ticks {position:relative; height:1.1rem; margin:.15rem 0 0;}
+.vigia-colorbar-ticks span {position:absolute; transform:translateX(-50%); white-space:nowrap;}
+.vigia-colorbar-ticks span:first-child {transform:none;}
+.vigia-colorbar-ticks span:last-child {transform:translateX(-100%);}
+.vigia-colorbar-chips {display:flex; flex-wrap:wrap; gap:.25rem .8rem;}
+.vigia-colorbar-chip {display:inline-flex; align-items:center; gap:.3rem; white-space:nowrap;}
+.vigia-colorbar-chip i {width:12px; height:12px; border-radius:2px; display:inline-block;}

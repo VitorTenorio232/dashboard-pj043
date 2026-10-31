@@ -412,6 +412,47 @@ def scale_bar_html(lat: float, zoom: float, max_px: int = 220) -> str:
     )
 
 
+def _tick_label(value: float) -> str:
+    # Mesmo formato da legenda da prancha PNG (4 algarismos significativos, vírgula decimal).
+    return f"{value:.4g}".replace(".", ",")
+
+
+def color_bar_html(product_name: str, vis: dict) -> str:
+    """Legenda de cores (HTML) do mapa: gradiente com a escala fixa do produto ou classes categóricas."""
+    from html import escape
+
+    product = PRODUCTS[product_name]
+    title = f"{escape(product.label)} ({escape(product.unit)})"
+    if product_name == "Cobertura do Solo":
+        from modules.export_image import _LANDCOVER_SHORT
+
+        chips = "".join(
+            f'<span class="vigia-colorbar-chip"><i style="background:{color}"></i>{escape(_LANDCOVER_SHORT.get(value, desc))}</span>'
+            for value, color, desc in LANDCOVER_CLASSES
+            if value not in {0, 200}
+        )
+        return f'<div class="vigia-colorbar"><strong>{title}</strong><div class="vigia-colorbar-chips">{chips}</div></div>'
+
+    palette = [f"#{c.lstrip('#')}" for c in vis.get("palette", product.vis["palette"])]
+    vmin, vmax = float(vis["min"]), float(vis["max"])
+    ticks = "".join(
+        f'<span style="left:{frac * 100:g}%">{"≥ " if frac == 1 else ""}{_tick_label(vmin + (vmax - vmin) * frac)}</span>'
+        for frac in (0, 0.25, 0.5, 0.75, 1)
+    )
+    return (
+        '<div class="vigia-colorbar">'
+        f'<strong>{title}</strong>'
+        f'<div class="vigia-colorbar-bar" style="background:linear-gradient(to right, {", ".join(palette)})"></div>'
+        f'<div class="vigia-colorbar-ticks">{ticks}</div>'
+        '</div>'
+    )
+
+
+def map_legend_strip_html(product_name: str, vis: dict, lat: float, zoom: float) -> str:
+    """Faixa abaixo do mapa interativo: barra de escala à esquerda e legenda de cores à direita."""
+    return f'<div class="vigia-map-strip">{scale_bar_html(lat, zoom)}{color_bar_html(product_name, vis)}</div>'
+
+
 def product_card(icon: str, title: str, text: str, footer: str) -> None:
     st.markdown(
         f"""
