@@ -40,11 +40,11 @@ class TestVigiaVisual(unittest.TestCase):
             {'short':'0 detecções rasterizadas','headline':'0 detecções rasterizadas'},'Claro',10)
         with Image.open(BytesIO(png)) as img:
             self.assertEqual(img.format,'PNG')
-            self.assertEqual(img.size,(1600,1400))
+            self.assertEqual(img.size,(1600,1456))
         jpg=png_to_jpeg(png)
         with Image.open(BytesIO(jpg)) as img:
             self.assertEqual(img.format,'JPEG')
-            self.assertEqual(img.size,(1600,1400))
+            self.assertEqual(img.size,(1600,1456))
 
     def test_export_categorico(self):
         map_image=Image.new('RGB',(1450,720),'#cee5d2')
@@ -52,7 +52,7 @@ class TestVigiaVisual(unittest.TestCase):
         png=render_board(map_image,src.key,'Minas Gerais',None,None,src.source,
             [],src.vis,{'short':'7 classes','headline':'7 classes'},'Satélite',6)
         with Image.open(BytesIO(png)) as img:
-            self.assertEqual(img.size,(1600,1510))
+            self.assertEqual(img.size,(1600,1566))
 
 
 if __name__ == '__main__':unittest.main()

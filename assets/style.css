@@ -128,3 +128,11 @@ a {text-underline-offset:3px;}
 .vigia-home-logo-slot {margin: 1.05rem 0 .4rem; max-width:560px;}
 .vigia-home-logo-slot img {display:block; width:100%; height:auto; max-height:250px; object-fit:contain; object-position:left;}
 @media (max-width:700px) {.vigia-brand--official img.vigia-brand-icon {width:58px; height:58px;} .vigia-home-logo-slot{max-width:460px;}}
+
+/* Barra de escala abaixo do mapa interativo */
+.vigia-scalebar {margin: .35rem 0 1rem .2rem;}
+.vigia-scalebar-labels {position:relative; height:1.05rem; font-size:.74rem; color:#546472;}
+.vigia-scalebar-labels span {position:absolute; transform:translateX(-50%); white-space:nowrap;}
+.vigia-scalebar-bar {display:flex; height:9px; border:1px solid #132c38;}
+.vigia-scalebar-bar span + span {border-left:1px solid #132c38;}
+.vigia-scalebar p {margin:.3rem 0 0; font-size:.74rem; color:#546472;}

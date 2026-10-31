@@ -88,7 +88,7 @@ def test_titulo_longo_nao_quebra_a_prancha():
         {"short": "mín -0,11 • máx 0,17", "headline": "mín -0,11 • máx 0,17"}, "Claro", 6.6,
     )
     with Image.open(BytesIO(png)) as img:
-        assert img.size == (1600, 1400)
+        assert img.size == (1600, 1456)
         # Faixa entre o cabeçalho e o mapa (y 120–134) deve continuar vazia (cor de fundo).
         band = img.convert("RGB").crop((60, 120, 1100, 134))
         assert band.getcolors(maxcolors=4) == [(1040 * 14, (244, 247, 249))]
@@ -121,3 +121,41 @@ def test_busca_da_ultima_data_comeca_por_janelas_recentes():
 
     assert LATEST_SEARCH_WINDOWS_DAYS[0] <= 15
     assert list(LATEST_SEARCH_WINDOWS_DAYS) == sorted(LATEST_SEARCH_WINDOWS_DAYS)
+
+
+def test_calculo_da_escala():
+    from modules.export_image import center_latitude, format_distance, meters_per_pixel, nice_scale
+
+    # Valor de referência da Web Mercator: 156.543,03 m/px no equador, zoom 0.
+    assert meters_per_pixel(0, 0) == pytest.approx(156_543.03, rel=1e-6)
+    assert meters_per_pixel(60, 3) == pytest.approx(156_543.03 * 0.5 / 8, rel=1e-6)
+
+    distance, length = nice_scale(-22.4, 10, 220)  # Itajubá, zoom 10 (~144,7 m/px)
+    assert str(int(distance))[0] in "12345" and 110 <= length <= 220
+    assert length * meters_per_pixel(-22.4, 10) == pytest.approx(distance, rel=0.01)
+
+    assert format_distance(500) == "500 m"
+    assert format_distance(2000) == "2 km"
+    assert format_distance(1_000_000) == "1.000 km"
+    # Centro em Mercator: entre 0° e -60° fica abaixo de -30° (o eixo estica perto dos polos).
+    assert -40 < center_latitude(-60, 0) < -30
+    assert center_latitude(-10, 10) == pytest.approx(0, abs=1e-9)
+
+
+def test_prancha_tem_barra_de_escala_entre_mapa_e_cards():
+    from modules.export_image import SCALE_STRIP
+
+    product = PRODUCTS["Umidade do Solo SMAP"]
+    png = render_board(
+        Image.new("RGB", (1450, 720), "#dae9df"), product.key, "Minas Gerais - Brazil",
+        "2026-10-16", "2026-10-22", product.source, [], product.vis,
+        {"short": "x", "headline": "x"}, "Claro", 6.6, scale_lat=-18.6,
+    )
+    with Image.open(BytesIO(png)) as img:
+        rgb = img.convert("RGB")
+        # Faixa abaixo do mapa (y 897–925+SCALE_STRIP): tem a barra escura desenhada à esquerda.
+        strip = rgb.crop((75, 920, 420, 945))
+        dark = sum(1 for p in strip.getdata() if sum(p) < 150)
+        assert dark > 200
+        # Os cards começam depois da faixa: a linha logo acima deles continua com a cor de fundo.
+        assert rgb.getpixel((700, 925 + SCALE_STRIP - 3)) == (244, 247, 249)

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from io import BytesIO
-from math import atan, floor, ceil, log, pi, sinh, tan
+from math import atan, ceil, cos, floor, log, log10, pi, radians, sinh, tan
 from urllib.request import Request, urlopen
 
 import ee
@@ -75,6 +75,55 @@ def _lonlat_to_world(lon: float, lat: float, zoom: int) -> tuple[float, float]:
     lat_rad = lat * pi / 180.0
     y = (1 - log(tan(pi / 4 + lat_rad / 2)) / pi) / 2 * scale
     return x, y
+
+
+_EARTH_CIRCUMFERENCE_M = 40_075_016.686  # equador, esfera da Web Mercator (EPSG:3857)
+SCALE_STRIP = 56  # altura (px) da faixa da barra de escala na prancha
+
+
+def meters_per_pixel(lat: float, zoom: float) -> float:
+    """Metros por pixel na Web Mercator (tiles de 256 px) numa latitude e zoom (fracionário)."""
+    return _EARTH_CIRCUMFERENCE_M * cos(radians(lat)) / (TILE_SIZE * 2 ** zoom)
+
+
+def nice_scale(lat: float, zoom: float, max_px: float) -> tuple[float, int]:
+    """Distância "redonda" (1, 2, 3, 4 ou 5 × 10ⁿ m) que cabe em ``max_px``; devolve (metros, pixels).
+
+    Com esses passos a barra sempre ocupa pelo menos metade de ``max_px``.
+    """
+    mpp = meters_per_pixel(lat, zoom)
+    max_m = mpp * max_px
+    power = 10 ** floor(log10(max_m))
+    distance = next(step * power for step in (5, 4, 3, 2, 1) if step * power <= max_m)
+    return distance, max(1, round(distance / mpp))
+
+
+def format_distance(meters: float) -> str:
+    if meters >= 1000:
+        return f"{meters / 1000:,.0f} km".replace(",", ".")
+    return f"{meters:,.0f} m".replace(",", ".")
+
+
+def center_latitude(south: float, north: float) -> float:
+    """Latitude do centro vertical do mapa (meio em Mercator, não média simples das latitudes)."""
+    _, y_north = _lonlat_to_world(0, north, 0)
+    _, y_south = _lonlat_to_world(0, south, 0)
+    return _world_to_lonlat(0, (y_north + y_south) / 2, 0)[1]
+
+
+def _draw_scale_bar(draw, x: int, y: int, lat: float, zoom: float, max_px: int, font, ink, muted, segments: int = 4):
+    """Barra de escala alternada (preto/branco) com rótulos 0, metade e total."""
+    distance, length = nice_scale(lat, zoom, max_px)
+    seg = length / segments
+    height = 10
+    for i in range(segments):
+        fill = ink if i % 2 == 0 else (255, 255, 255)
+        draw.rectangle((round(x + i * seg), y, round(x + (i + 1) * seg), y + height), fill=fill, outline=ink, width=1)
+    for frac, text in ((0, "0"), (0.5, format_distance(distance / 2)), (1, format_distance(distance))):
+        xp = x + length * frac
+        draw.line((xp, y - 4, xp, y), fill=ink, width=1)
+        draw.text((xp - draw.textlength(text, font=font) / 2, y - 21), text, font=font, fill=muted)
+    return distance, length
 
 
 def _world_to_lonlat(x: float, y: float, zoom: int) -> tuple[float, float]:
@@ -298,14 +347,20 @@ def render_board(
     basemap: str,
     zoom: int,
     generated_at: datetime | None = None,
+    scale_lat: float = 0.0,
 ) -> bytes:
-    """Composição determinística para teste visual sem conexão com GEE."""
+    """Composição determinística para teste visual sem conexão com GEE.
+
+    ``scale_lat`` é a latitude do centro do mapa, usada na barra de escala (Web Mercator).
+    """
     from PIL import Image, ImageDraw
     from modules.products import LANDCOVER_VALUES
 
     product = PRODUCTS[product_name]
     is_landcover = product_name == 'Cobertura do Solo'
-    w, h = 1600, 1510 if is_landcover else 1400
+    # Faixa da barra de escala entre o mapa e os cards; tudo abaixo desce SCALE_STRIP px.
+    strip = SCALE_STRIP
+    w, h = 1600, (1510 if is_landcover else 1400) + strip
     bg = (244, 247, 249)
     surface = (255, 255, 255)
     edge = (221, 229, 234)
@@ -356,6 +411,15 @@ def render_board(
     fitted = map_image.convert('RGB').resize((1450, 720), resample=Image.Resampling.LANCZOS)
     board.paste(fitted, (75, 155))
 
+    # Barra de escala logo abaixo do mapa, antes dos cards.
+    bar_y = 897 + 34
+    _, bar_len = _draw_scale_bar(d, 80, bar_y, scale_lat, zoom, 360, f_small, ink, muted)
+    lat_text = f'{abs(scale_lat):.1f}°{"S" if scale_lat < 0 else "N"}'.replace('.', ',')
+    note = f'Escala gráfica no centro do mapa (latitude {lat_text}), projeção Web Mercator.'
+    if zoom < 5:
+        note += ' Em áreas grandes, a distância real varia com a latitude.'
+    d.text((80 + bar_len + 36, bar_y - 3), note, font=f_small, fill=muted)
+
     # Cards institucionais centrados, largura consistente e sem texto invadindo bordas.
     cards = [
         ('BANCO / SENSOR', product.group),
@@ -364,7 +428,7 @@ def render_board(
         ('RESULTADO NA ÁREA', (summary or {}).get('short','Não calculado')),
         ('BASE CARTOGRÁFICA', f'{basemap} • zoom {zoom:.1f}'),
     ]
-    cx, top, cw, ch, gap = 55, 925, 282, 118, 20
+    cx, top, cw, ch, gap = 55, 925 + strip, 282, 118, 20
     for i, (heading, value) in enumerate(cards):
         x = cx + (cw + gap) * i
         d.rounded_rectangle((x, top, x+cw, top+ch), radius=13, fill=surface, outline=edge, width=1)
@@ -372,7 +436,7 @@ def render_board(
         _draw_wrapped_center(d, value, x+cw/2, top+49, cw-24, f_body, ink, limit=3)
 
     # Bloco de legenda: nada à direita da barra, informações ficam abaixo.
-    leg_top, leg_bottom = 1065, 1398 if is_landcover else 1287
+    leg_top, leg_bottom = 1065 + strip, (1398 if is_landcover else 1287) + strip
     d.rounded_rectangle((55, leg_top, 1545, leg_bottom), radius=14, fill=surface, outline=edge, width=1)
     title = 'LEGENDA E INFORMAÇÕES'
     _draw_wrapped_center(d, title, w/2, leg_top+16, 1450, f_card, teal)
@@ -489,5 +553,6 @@ def styled_map_bytes(
         rgba=rgba.resize(bg.size,Image.Resampling.BILINEAR)
     bg.alpha_composite(rgba)
     png = render_board(bg.convert('RGB'),product_name,region_label,start_text,end_text,
-                       source_label,overlays,vis,summary,basemap,zoom)
+                       source_label,overlays,vis,summary,basemap,zoom,
+                       scale_lat=center_latitude(south, north))
     return png_to_jpeg(png) if output_format.upper()=='JPEG' else png

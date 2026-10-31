@@ -11,7 +11,7 @@ from modules.regions import default_overlays, get_region, overlay_options, regio
 from modules.ui import (
     date_range_ui, landcover_legend_ui, load_css, page_title,
     processing_time_warning, product_metadata, product_selector_ui,
-    query_dates, regional_selector_ui, sidebar_brand,
+    query_dates, regional_selector_ui, scale_bar_html, sidebar_brand,
 )
 
 load_css("assets/style.css")
@@ -99,10 +99,15 @@ with left:
         if previous["product"] != product_name or previous["region_name"] != region_name:
             st.info("Você alterou os filtros. O mapa abaixo ainda representa a última análise gerada; clique em **Gerar mapa** para atualizar.")
         view_data = st_folium(previous["map"], height=670, use_container_width=True, returned_objects=["center", "zoom"], key=f"vigia_map_canvas_{previous.get('seq', 0)}")
+        scale_lat, scale_zoom = previous["map"].location[0], previous["map"].options.get("zoom", 4)
         if view_data and isinstance(view_data, dict):
             center, zoom = view_data.get("center"), view_data.get("zoom")
             if center and isinstance(zoom, (int, float)):
                 st.session_state["vigia_map_view"] = {"center": center, "zoom": zoom}
+                if isinstance(center.get("lat"), (int, float)):
+                    scale_lat, scale_zoom = center["lat"], zoom
+        # Barra de escala logo abaixo do mapa, antes dos cards; segue o zoom (st_folium devolve o zoom atual).
+        st.markdown(scale_bar_html(scale_lat, scale_zoom), unsafe_allow_html=True)
 
         st.markdown("#### Informações do mapa")
         c1, c2, c3, c4 = st.columns(4, gap="small")

@@ -389,6 +389,29 @@ def regional_selector_ui(region_name: str):
     return bounds, country_name, admin1_name, city_name
 
 
+def scale_bar_html(lat: float, zoom: float, max_px: int = 220) -> str:
+    """Barra de escala (HTML) para a latitude/zoom atuais do mapa interativo."""
+    from modules.export_image import format_distance, nice_scale
+
+    distance, length = nice_scale(lat, zoom, max_px)
+    segments = "".join(
+        f'<span style="flex:1;background:{"#132c38" if i % 2 == 0 else "#ffffff"};"></span>' for i in range(4)
+    )
+    labels = (
+        f'<span style="left:0">0</span>'
+        f'<span style="left:50%">{format_distance(distance / 2)}</span>'
+        f'<span style="left:100%">{format_distance(distance)}</span>'
+    )
+    lat_text = f'{abs(lat):.1f}°{"S" if lat < 0 else "N"}'.replace(".", ",")
+    return (
+        '<div class="vigia-scalebar">'
+        f'<div class="vigia-scalebar-labels" style="width:{length}px">{labels}</div>'
+        f'<div class="vigia-scalebar-bar" style="width:{length}px">{segments}</div>'
+        f'<p>Escala no centro do mapa (latitude {lat_text}); acompanha o zoom do mapa.</p>'
+        '</div>'
+    )
+
+
 def product_card(icon: str, title: str, text: str, footer: str) -> None:
     st.markdown(
         f"""

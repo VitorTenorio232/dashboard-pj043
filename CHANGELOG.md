@@ -1,5 +1,13 @@
 # Histórico de mudanças
 
+## 2026-10-31
+
+### Novidades
+- **Barra de escala** em todos os mapas gerados, logo abaixo do mapa e antes dos quadros de informação:
+  - na prancha PNG/JPEG (Mapas e Downloads), com a latitude de referência e aviso de que, em áreas
+    continentais, a distância varia com a latitude (projeção Web Mercator);
+  - na página de mapas interativos, acompanhando o zoom do mapa.
+
 ## 2026-10-29
 
 ### Correções
