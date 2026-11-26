@@ -6,9 +6,12 @@ from __future__ import annotations
 
 import ee
 import folium
+import streamlit as st
 from streamlit_folium import st_folium
 
-from modules.products import LANDCOVER_PALETTE, LANDCOVER_VALUES, PRODUCTS, period_image
+from modules.products import (
+    LANDCOVER_PALETTE, LANDCOVER_VALUES, PRODUCTS, freshness_token, image_count, period_image, region_area_km2,
+)
 from modules.regions import (
     get_region,
     map_center,
@@ -73,9 +76,10 @@ def _outline_image(feature_collection, color: str = "111111", width: int = 2) ->
     )
 
 
-def _add_outline(m: folium.Map, feature_collection, name: str, color: str, width: int) -> None:
-    image, vis = _paint_outline(feature_collection, color, width)
-    m.add_ee_layer(image, vis, name)
+def _add_tile_layer(m: folium.Map, url: str, name: str) -> None:
+    folium.raster_layers.TileLayer(
+        tiles=url, attr="Google Earth Engine", name=name, overlay=True, control=True,
+    ).add_to(m)
 
 
 def _admin1_for_overlay(country_name: str | None, region_name: str):
@@ -86,34 +90,77 @@ def _admin1_for_overlay(country_name: str | None, region_name: str):
     return None
 
 
-def _add_overlays(
-    m: folium.Map,
-    region,
-    overlays: list[str],
-    region_name: str | None = None,
-    country_name: str | None = None,
-    admin1_name: str | None = None,
-    city_name: str | None = None,
-) -> None:
-    if "América do Sul e países" in overlays:
-        _add_outline(m, south_america_countries_fc(), "América do Sul e países", "222222", 2)
+# ---------------------------------------------------------------------------------------------
+# Consultas cacheadas. A chave usa só valores simples (produto, datas, região completa, contornos),
+# nunca objetos ee: mudar qualquer filtro relevante gera outra entrada. Períodos recentes expiram
+# a cada 15 min pelo freshness_token; o TTL de 1 h também limita a vida dos tiles do getMapId.
+# ---------------------------------------------------------------------------------------------
+CACHE_TTL = "1h"
+GEOMETRY_TTL = "7d"
 
-    if "Estados/Províncias do país" in overlays:
-        fc = _admin1_for_overlay(country_name, region_name or "")
-        if fc is not None:
-            _add_outline(m, fc, "Estados/Províncias do país", "555555", 1)
 
-    if "Região selecionada" in overlays:
-        _add_outline(m, selected_region_fc(region), "Região selecionada", "111111", 3)
+def region_key(region_name: str, bounds=None, country_name: str | None = None,
+               admin1_name: str | None = None, city_name: str | None = None) -> tuple:
+    """Identifica a área inteira (tipo + retângulo/país/estado/município), não só o tipo de região."""
+    return (region_name, tuple(float(v) for v in bounds) if bounds else None, country_name, admin1_name, city_name)
 
-    if "Município/Distrito selecionado" in overlays and country_name and admin1_name and city_name:
-        _add_outline(
-            m,
-            selected_city_fc(country_name, admin1_name, city_name),
-            f"Município/Distrito: {city_name}",
-            "dc2626",
-            3,
-        )
+
+def _region_from_key(key: tuple):
+    region_name, bounds, country_name, admin1_name, city_name = key
+    return get_region(region_name, bounds, country_name=country_name, admin1_name=admin1_name, city_name=city_name)
+
+
+@st.cache_data(ttl=CACHE_TTL, max_entries=512, show_spinner=False)
+def cached_image_count(product_name: str, start: str, end: str, key: tuple, freshness: str) -> int:
+    return image_count(product_name, start, end, _region_from_key(key))
+
+
+@st.cache_data(ttl=GEOMETRY_TTL, max_entries=512, show_spinner=False)
+def cached_region_area_km2(key: tuple) -> float:
+    return region_area_km2(_region_from_key(key))
+
+
+@st.cache_data(ttl=GEOMETRY_TTL, max_entries=512, show_spinner=False)
+def _cached_center(key: tuple):
+    region_name, bounds = key[0], key[1]
+    return map_center(region_name, bounds, region=_region_from_key(key))
+
+
+@st.cache_data(ttl=CACHE_TTL, max_entries=256, show_spinner=False)
+def _cached_product_tiles(product_name: str, start: str, end: str, key: tuple, freshness: str) -> str:
+    region = _region_from_key(key)
+    display_image, vis = _display_image_and_vis(product_name, period_image(product_name, start, end, region), region)
+    return ee.Image(display_image).getMapId(vis)["tile_fetcher"].url_format
+
+
+@st.cache_data(ttl=CACHE_TTL, max_entries=256, show_spinner=False)
+def _cached_overlay_tiles(overlay: str, key: tuple | None) -> tuple[str, str] | None:
+    """(nome da camada, URL dos tiles) de um contorno; None quando não se aplica à área."""
+    if overlay == "América do Sul e países":
+        fc, name, color, width = south_america_countries_fc(), overlay, "222222", 2
+    else:
+        region_name, _, country_name, admin1_name, city_name = key
+        if overlay == "Estados/Províncias do país":
+            fc, name, color, width = _admin1_for_overlay(country_name, region_name or ""), overlay, "555555", 1
+        elif overlay == "Região selecionada":
+            fc, name, color, width = selected_region_fc(_region_from_key(key)), overlay, "111111", 3
+        elif overlay == "Município/Distrito selecionado" and country_name and admin1_name and city_name:
+            fc = selected_city_fc(country_name, admin1_name, city_name)
+            name, color, width = f"Município/Distrito: {city_name}", "dc2626", 3
+        else:
+            return None
+        if fc is None:
+            return None
+    image, vis = _paint_outline(fc, color, width)
+    return name, image.getMapId(vis)["tile_fetcher"].url_format
+
+
+def _add_overlays(m: folium.Map, overlays: list[str], key: tuple) -> None:
+    for overlay in overlays:
+        # O contorno da América do Sul é igual para todas as consultas: chave sem a região.
+        layer = _cached_overlay_tiles(overlay, None if overlay == "América do Sul e países" else key)
+        if layer is not None:
+            _add_tile_layer(m, layer[1], layer[0])
 
 
 def _dynamic_vis(product_name: str, image: ee.Image, region) -> dict:
@@ -161,8 +208,35 @@ def _fmt_number(value: float | int | None, decimals: int = 2) -> str:
 SUMMARY_MAX_PIXELS = 1e7
 
 
-def summarize_image(product_name: str, image: ee.Image, region) -> dict:
-    """Resume o conteúdo do produto dentro da área selecionada."""
+def _summary_fallback(product_name: str) -> dict:
+    if product_name == "Cobertura do Solo":
+        detail = "Não foi possível calcular as classes presentes."
+    elif PRODUCTS[product_name].kind.startswith("fire_"):
+        detail = "Não foi possível calcular o total de detecções."
+    else:
+        detail = "Não foi possível calcular estatísticas da área."
+    return {"headline": "Resumo indisponível", "short": "n/d", "details": [detail]}
+
+
+@st.cache_data(ttl=CACHE_TTL, max_entries=512, show_spinner=False)
+def _cached_summary(product_name: str, start: str, end: str, key: tuple, freshness: str) -> dict:
+    region = _region_from_key(key)
+    return summarize_image(product_name, period_image(product_name, start, end, region), region, strict=True)
+
+
+def cached_summary(product_name: str, start: str, end: str, key: tuple) -> dict:
+    """Resumo cacheado; falhas não entram no cache (a próxima tentativa consulta o GEE de novo)."""
+    try:
+        return _cached_summary(product_name, start, end, key, freshness_token(product_name, end))
+    except Exception:
+        return _summary_fallback(product_name)
+
+
+def summarize_image(product_name: str, image: ee.Image, region, strict: bool = False) -> dict:
+    """Resume o conteúdo do produto dentro da área selecionada.
+
+    Com ``strict=True`` a falha é propagada (usado pela versão cacheada para não guardar o fallback).
+    """
     product = PRODUCTS[product_name]
     band = product.out_band
 
@@ -187,11 +261,9 @@ def summarize_image(product_name: str, image: ee.Image, region) -> dict:
                 ],
             }
         except Exception:
-            return {
-                "headline": "Resumo indisponível",
-                "short": "n/d",
-                "details": ["Não foi possível calcular as classes presentes."],
-            }
+            if strict:
+                raise
+            return _summary_fallback(product_name)
 
     if product.kind.startswith("fire_"):
         try:
@@ -214,11 +286,9 @@ def summarize_image(product_name: str, image: ee.Image, region) -> dict:
                 ],
             }
         except Exception:
-            return {
-                "headline": "Resumo indisponível",
-                "short": "n/d",
-                "details": ["Não foi possível calcular o total de detecções."],
-            }
+            if strict:
+                raise
+            return _summary_fallback(product_name)
 
     try:
         stats = image.reduceRegion(
@@ -246,11 +316,9 @@ def summarize_image(product_name: str, image: ee.Image, region) -> dict:
             ],
         }
     except Exception:
-        return {
-            "headline": "Resumo indisponível",
-            "short": "n/d",
-            "details": ["Não foi possível calcular estatísticas da área."],
-        }
+        if strict:
+            raise
+        return _summary_fallback(product_name)
 
 
 def visual_image_with_overlays(
@@ -331,30 +399,18 @@ def make_map(
     _ensure_folium_ee_method()
 
     overlays = overlays or ["América do Sul e países", "Região selecionada"]
-    region = get_region(
-        region_name,
-        bounds,
-        country_name=country_name,
-        admin1_name=admin1_name,
-        city_name=city_name,
-    )
+    key = region_key(region_name, bounds, country_name, admin1_name, city_name)
+    # Objetos ee são só descrições (sem rede); a página guarda image/region para o PNG/JPEG.
+    region = _region_from_key(key)
     image = period_image(product_name, start, end, region)
     product = PRODUCTS[product_name]
-    center, zoom = map_center(region_name, bounds, region=region)
-    display_image, vis = _display_image_and_vis(product_name, image, region)
+    center, zoom = _cached_center(key)
 
     layer_name = product.label if not product.temporal else f"{product.label} — {start} a {end}"
     m = _base_map(center, zoom, basemap)
-    m.add_ee_layer(display_image, vis, layer_name)
-    _add_overlays(
-        m,
-        region,
-        overlays,
-        region_name=region_name,
-        country_name=country_name,
-        admin1_name=admin1_name,
-        city_name=city_name,
-    )
+    _add_tile_layer(m, _cached_product_tiles(product_name, start, end, key, freshness_token(product_name, end)),
+                    layer_name)
+    _add_overlays(m, overlays, key)
 
     # A legenda flutuante e o controle de camadas foram removidos a pedido do usuário.
     # As informações do mapa são exibidas abaixo do mapa na própria página.

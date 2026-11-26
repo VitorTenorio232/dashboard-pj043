@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from modules.auth_gee import initialize_gee
-from modules.products import PRODUCTS, heavy_request_message, region_area_km2, safe_filename
-from modules.regions import get_region
-from modules.series import make_series
+from modules.maps import cached_region_area_km2, region_key
+from modules.products import PRODUCTS, heavy_request_message, safe_filename
+from modules.series import cached_series
 from modules.ui import (
     date_range_ui,
     load_css,
@@ -17,7 +18,7 @@ from modules.ui import (
     processing_time_warning,
     product_metadata,
     product_selector_ui,
-    regional_selector_ui, region_picker_ui, sidebar_brand,
+    regional_selector_ui, region_picker_ui, report_exception, selection_differs, sidebar_brand,
 )
 
 load_css("assets/style.css")
@@ -60,6 +61,9 @@ if product.temporal and start is not None and end is not None:
         st.warning(f"Para séries diárias deste produto, selecione no máximo {max_daily} dias ou use frequência mensal.")
         st.stop()
 
+area_key = region_key(region_name, bounds, country_name, admin1_name, city_name)
+current_selection = (product_name, area_key, start, end, frequency)
+
 left, right = st.columns([0.70, 0.30], gap="large")
 with right:
     product_metadata(product)
@@ -70,30 +74,34 @@ with right:
             icon="🔥",
         )
 
+def series_file_name(last: dict, region_label: str) -> str:
+    """Inclui período e frequência: séries de períodos diferentes não geram arquivos com o mesmo nome."""
+    period = f"{last['start']}_{last['end']}_{last['frequency']}" if last.get("start") else "estatico"
+    return f"VIGIA_serie_{safe_filename(last['product'])}_{safe_filename(region_label)}_{safe_filename(period)}.csv"
+
+
 with left:
     run_series = st.button("Gerar série temporal", type="primary", width="stretch")
     if run_series:
         try:
             heavy = None
             if product.max_area_days and start is not None and end is not None:
-                region = get_region(region_name, bounds, country_name=country_name,
-                                    admin1_name=admin1_name, city_name=city_name)
-                heavy = heavy_request_message(product_name, region_area_km2(region), (end - start).days + 1)
+                heavy = heavy_request_message(product_name, cached_region_area_km2(area_key), (end - start).days + 1)
             if heavy:
                 st.warning(heavy, icon="🐢")
             else:
                 with st.spinner("Calculando no Google Earth Engine..."):
-                    dataframe = make_series(
+                    dataframe = cached_series(
                         product_name, start, end, region_name, frequency, bounds,
                         country_name=country_name, admin1_name=admin1_name, city_name=city_name,
                     )
                 st.session_state["vigia_last_series"] = {
                     "df": dataframe, "product": product_name, "region": region_name,
-                    "frequency": frequency,
+                    "frequency": frequency, "selection": current_selection,
+                    "start": start, "end": end,
                 }
         except Exception as exc:
-            st.error("Não foi possível gerar a série.")
-            st.exception(exc)
+            report_exception("Não foi possível gerar a série.", exc)
 
     last_series = st.session_state.get("vigia_last_series")
     if not last_series:
@@ -109,23 +117,24 @@ with left:
             f"Região: **{region_label}** · Frequência: {last_series['frequency']} · "
             f"Intervalos com dado: {valid} de {len(df)}"
         )
-        if last_series["product"] != product_name or last_series["region"] != region_name:
-            st.info("Os filtros foram alterados. A tabela ainda representa a última série gerada.")
+        if selection_differs(last_series, current_selection):
+            st.info("Os filtros foram alterados. O gráfico, a tabela e o CSV ainda representam a última série gerada.")
         with st.container(border=True):
             if not df.empty and last_product.temporal:
                 fig = px.line(df, x="data_inicio", y="valor", markers=True,
                               labels={"valor": last_product.unit, "data_inicio": "Data"})
-                # connectgaps: dias sem passagem (comum no SMAP) não quebram a linha; os marcadores
-                # continuam mostrando só os dias com dado.
-                fig.update_traces(line_color="#0a796b", marker_color="#d86c36", connectgaps=True)
+                # connectgaps só no SMAP (dias sem passagem são esperados). Nos demais produtos, como chuva,
+                # uma linha atravessando o dia sem observação parecia um valor medido.
+                fig.update_traces(line_color="#0a796b", marker_color="#d86c36",
+                                  connectgaps=last_product.kind == "soil_moisture_smap")
                 fig.update_layout(height=400, margin=dict(l=10,r=10,t=30,b=15),
                                   paper_bgcolor="rgba(0,0,0,0)",
                                   plot_bgcolor="rgba(0,0,0,0)")
                 st.plotly_chart(fig, width="stretch")
             elif not df.empty:
                 value = df.iloc[0]["valor"]
-                st.metric(last_product.label, "Sem dados" if value is None else f"{value:.4g} {last_product.unit}")
+                st.metric(last_product.label, "Sem dados" if pd.isna(value) else f"{value:.4g} {last_product.unit}")
             st.dataframe(df, width="stretch", hide_index=True)
             st.download_button("Baixar CSV da série", data=df.to_csv(index=False).encode("utf-8"),
-                               file_name=f"VIGIA_serie_{safe_filename(last_series['product'])}_{safe_filename(region_label)}.csv",
+                               file_name=series_file_name(last_series, region_label),
                                mime="text/csv", width="stretch", on_click="ignore")

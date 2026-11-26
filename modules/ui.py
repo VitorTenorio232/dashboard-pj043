@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+import logging
 from pathlib import Path
 
 import streamlit as st
@@ -18,6 +19,43 @@ from modules.products import (
     safe_filename,
 )
 from modules.regions import south_america_country_names, admin1_names, admin2_names, region_options, normalize_region_name
+
+LOGGER = logging.getLogger("vigia")
+
+_TIMEOUT_TOKENS = ("timed out", "timeout", "deadline exceeded", "read timed out")
+
+
+def is_timeout_error(exc: BaseException) -> bool:
+    """Timeout de rede/serviço (inclui o prazo configurado em ee.data.setDeadline)."""
+    return isinstance(exc, TimeoutError) or any(token in str(exc).lower() for token in _TIMEOUT_TOKENS)
+
+
+def report_exception(message: str, exc: BaseException) -> None:
+    """Mostra uma mensagem amigável e registra o traceback só no log do servidor.
+
+    ``st.exception`` ignora ``client.showErrorDetails`` e expunha o traceback completo (caminhos do
+    servidor, mensagens internas do Earth Engine) a qualquer visitante. O traceback só aparece na tela
+    quando ``client.showErrorDetails`` é "full" ou "stacktrace" (ex.: ``--client.showErrorDetails=full``).
+    """
+    LOGGER.error("%s", message, exc_info=(type(exc), exc, exc.__traceback__))
+    if is_timeout_error(exc):
+        st.warning(
+            f"{message} O Earth Engine demorou demais para responder. Tente novamente em instantes "
+            "ou reduza a área/período.",
+            icon="⏱️",
+        )
+    else:
+        st.error(message)
+    detail = str(st.get_option("client.showErrorDetails")).lower()
+    if detail in {"full", "stacktrace", "true"}:
+        st.exception(exc)
+    else:
+        st.caption(f"Detalhe técnico: {type(exc).__name__}")
+
+
+def selection_differs(previous: dict | None, current: tuple) -> bool:
+    """True quando o resultado guardado na sessão foi gerado com outra seleção de filtros."""
+    return bool(previous) and previous.get("selection") != current
 
 
 LANDCOVER_CLASSES = [
@@ -100,10 +138,19 @@ def page_title(title: str, subtitle: str) -> None:
 
 @st.cache_data(ttl=6 * 60 * 60, show_spinner=False)
 def _latest_available_timestamp_cached(product_name: str) -> datetime | None:
-    """Evita repetir consultas de disponibilidade ao Earth Engine a cada rerun."""
+    """Evita repetir consultas de disponibilidade ao Earth Engine a cada rerun.
+
+    Exceções não são capturadas aqui de propósito: o st.cache_data não guarda exceções, então uma
+    falha temporária do GEE não fica "presa" no cache por 6 horas (antes, o None era cacheado).
+    """
+    return latest_available_timestamp(product_name)
+
+
+def _latest_timestamp_or_none(product_name: str) -> datetime | None:
     try:
-        return latest_available_timestamp(product_name)
-    except Exception:
+        return _latest_available_timestamp_cached(product_name)
+    except Exception as exc:
+        LOGGER.warning("Última data de %s indisponível: %s: %s", product_name, type(exc).__name__, exc)
         return None
 
 
@@ -117,7 +164,7 @@ def resolved_product_date_bounds(product: Product) -> tuple[date | None, date | 
     if product.availability_end:
         return start, declared_end, None
 
-    latest = _latest_available_timestamp_cached(product.key)
+    latest = _latest_timestamp_or_none(product.key)
     if latest is not None:
         return start, min(latest.date(), date.today()), latest
 
@@ -311,16 +358,45 @@ def query_dates(product: Product, start: date | None, end: date | None) -> tuple
     return "2000-01-01", "2000-01-01"
 
 
+def bounds_error(bounds: tuple[float, float, float, float]) -> str | None:
+    """Valida o retângulo (lon_min, lat_min, lon_max, lat_max); devolve a mensagem de erro ou None."""
+    lon_min, lat_min, lon_max, lat_max = bounds
+    if not (-180 <= lon_min <= 180 and -180 <= lon_max <= 180):
+        return "As longitudes precisam estar entre -180 e 180."
+    if not (-90 <= lat_min <= 90 and -90 <= lat_max <= 90):
+        return "As latitudes precisam estar entre -90 e 90."
+    if lon_min >= lon_max or lat_min >= lat_max:
+        return "O valor mínimo precisa ser menor que o máximo, tanto na longitude quanto na latitude."
+    return None
+
+
 def custom_bounds_ui():
     st.caption("Informe o retângulo no formato longitude/latitude em graus decimais.")
     c1, c2 = st.columns(2)
     with c1:
-        lon_min = st.number_input("Longitude mínima", value=-50.0, format="%.4f")
-        lat_min = st.number_input("Latitude mínima", value=-25.0, format="%.4f")
+        lon_min = st.number_input("Longitude mínima", value=-50.0, min_value=-180.0, max_value=180.0, format="%.4f")
+        lat_min = st.number_input("Latitude mínima", value=-25.0, min_value=-90.0, max_value=90.0, format="%.4f")
     with c2:
-        lon_max = st.number_input("Longitude máxima", value=-40.0, format="%.4f")
-        lat_max = st.number_input("Latitude máxima", value=-15.0, format="%.4f")
-    return lon_min, lat_min, lon_max, lat_max
+        lon_max = st.number_input("Longitude máxima", value=-40.0, min_value=-180.0, max_value=180.0, format="%.4f")
+        lat_max = st.number_input("Latitude máxima", value=-15.0, min_value=-90.0, max_value=90.0, format="%.4f")
+    bounds = (float(lon_min), float(lat_min), float(lon_max), float(lat_max))
+    error = bounds_error(bounds)
+    if error:
+        st.error(f"Retângulo inválido. {error}")
+        st.stop()
+    return bounds
+
+
+def _names_or_stop(loader, *args, what: str) -> list[str]:
+    """Lista administrativa do GEE; se o serviço falhar, avisa e para a página sem traceback.
+
+    A falha não é cacheada, então a lista volta assim que o Earth Engine responder.
+    """
+    try:
+        return loader(*args)
+    except Exception as exc:
+        report_exception(f"Não foi possível carregar a lista de {what} agora.", exc)
+        st.stop()
 
 
 
@@ -359,7 +435,7 @@ def regional_selector_ui(region_name: str):
 
     elif normalized == "Estado/Província/Departamento":
         country_name = "Brazil"
-        states = admin1_names("Brazil")
+        states = _names_or_stop(admin1_names, "Brazil", what="estados")
         if not states:
             st.warning("Nenhum estado brasileiro encontrado no catálogo administrativo.")
             st.stop()
@@ -368,14 +444,14 @@ def regional_selector_ui(region_name: str):
 
     elif normalized == "Cidade/Município/Distrito":
         country_name = "Brazil"
-        states = admin1_names("Brazil")
+        states = _names_or_stop(admin1_names, "Brazil", what="estados")
         if not states:
             st.warning("Nenhum estado brasileiro encontrado no catálogo administrativo.")
             st.stop()
         default_state = "Minas Gerais" if "Minas Gerais" in states else states[0]
         admin1_name = st.selectbox("Estado do Brasil", states, index=states.index(default_state))
 
-        cities = admin2_names("Brazil", admin1_name)
+        cities = _names_or_stop(admin2_names, "Brazil", admin1_name, what="municípios")
         if not cities:
             st.warning("Nenhum município encontrado para o estado selecionado.")
             st.stop()

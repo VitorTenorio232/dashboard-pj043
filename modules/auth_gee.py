@@ -4,11 +4,28 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 
 import ee
 import streamlit as st
+
+
+LOGGER = logging.getLogger("vigia")
+
+# Sem prazo (padrão do earthengine-api: deadline 0), uma resposta que nunca chega deixa a sessão
+# presa indefinidamente. 300 s acompanha o limite das consultas interativas do Earth Engine.
+DEFAULT_DEADLINE_SECONDS = 300.0
+
+
+def ee_deadline_ms() -> int:
+    """Prazo por requisição ao GEE, configurável por EE_DEADLINE_SECONDS (0 desliga)."""
+    try:
+        seconds = float(os.environ.get("EE_DEADLINE_SECONDS", DEFAULT_DEADLINE_SECONDS))
+    except ValueError:
+        seconds = DEFAULT_DEADLINE_SECONDS
+    return max(0, int(seconds * 1000))
 
 
 def _earthengine_secrets() -> dict | None:
@@ -48,11 +65,13 @@ def initialize_gee() -> bool:
             project_id = os.environ.get("EE_PROJECT", "eng-scene-497515-t2")
             ee.Initialize(project=project_id)
 
+        ee.data.setDeadline(ee_deadline_ms())
         return True
 
     except Exception as exc:
-        st.error("Erro ao inicializar o Google Earth Engine.")
-        st.error(str(exc))
+        # A mensagem pode citar projeto, conta de serviço ou caminho da chave: vai só para o log.
+        LOGGER.error("Falha ao inicializar o Earth Engine", exc_info=(type(exc), exc, exc.__traceback__))
+        st.error(f"Erro ao inicializar o Google Earth Engine ({type(exc).__name__}).")
         st.info(
             "No Streamlit Cloud, configure os Secrets em Settings > Secrets. "
             "Localmente, use `earthengine authenticate` e defina `EE_PROJECT`.",

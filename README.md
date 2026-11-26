@@ -72,6 +72,7 @@ docs/historico/         # notas de versões antigas
 python -m pytest -q                                             # testes automáticos
 python -m ruff check app.py modules pages tests tools --select F  # erros de código
 python tools/auditar_catalogo.py --project . --gee              # confere o catálogo no Earth Engine
+python tools/medir_fluxo.py --fim 2026-09-27                     # tempo e chamadas ao GEE no fluxo Mapas/Séries
 ```
 
 Os testes rodam no GitHub a cada `push` (aba **Actions → Testes do site**).
