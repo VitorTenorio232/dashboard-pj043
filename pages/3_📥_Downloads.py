@@ -86,7 +86,7 @@ with left:
                     st.stop()
                 image = period_image(product_name, start_text, end_text, region)
                 region_bounds = region.bounds(maxError=1000).getInfo()["coordinates"]
-                region_label = region_display_name(region_name, country_name, admin1_name, city_name)
+                region_label = region_display_name(region_name, country_name, admin1_name, city_name, area=bounds)
                 summary = cached_summary(product_name, start_text, end_text, area_key)
                 date_token = f"{start_text}_{end_text}" if product.temporal else "estatico"
                 base_name = f"VIGIA_{safe_filename(product_name)}_{safe_filename(region_label)}_{date_token}_{safe_filename(product.statistic)}"

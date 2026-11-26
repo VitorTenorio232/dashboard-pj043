@@ -8,3 +8,7 @@ plotly
 
 Pillow
 matplotlib>=3.10.7,<4
+pyshp>=2.3
+shapely>=2.0
+pyproj>=3.6
+defusedxml>=0.7

@@ -12,7 +12,7 @@ Site: <https://vigia-dashboard.streamlit.app/>
 | Página | O que faz |
 |---|---|
 | 🏠 **HOME** | Catálogo pesquisável dos 25 produtos, separados em focos de calor, atmosfera e ambiente/superfície. |
-| 🗺️ **Mapas interativos** | Mapa do produto para América do Sul, país, estado, município ou retângulo, com resumo na área e prancha PNG/JPEG. |
+| 🗺️ **Mapas interativos** | Mapa do produto para América do Sul, país, estado, município, retângulo ou **área enviada pelo usuário** (Shapefile, KML/KMZ, GeoJSON, GeoPackage), com resumo na área e prancha PNG/JPEG. |
 | 📈 **Séries temporais** | Valor regional dia a dia (até 1 ano; 90 dias para produtos de alta resolução) ou mês a mês, com CSV. |
 | 📥 **Downloads** | GeoTIFF analítico, prancha PNG/JPEG, mapa HTML e metadados CSV/JSON. |
 | ℹ️ **Sobre** | Como interpretar cada produto e ficha técnica de cada um. |
@@ -56,6 +56,7 @@ pages/                  # HOME, Mapas, Séries, Downloads, Sobre
 modules/
   products.py           # catálogo dos produtos e cálculo de cada um no Earth Engine
   regions.py            # países, estados, municípios e retângulo
+  user_area.py          # leitura segura do arquivo de área do usuário (SHP, KML/KMZ, GeoJSON, GPKG)
   maps.py               # mapa Folium, resumo na área e contornos
   series.py             # séries temporais (consultas em lote ao GEE)
   export_image.py       # prancha PNG/JPEG e estimativa do GeoTIFF

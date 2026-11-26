@@ -1,5 +1,7 @@
 [server]
 headless = true
+# Único envio do site é o arquivo de área (limite também checado em modules/user_area.py).
+maxUploadSize = 20
 
 [theme]
 base = "light"
@@ -13,3 +15,4 @@ font = "sans serif"
 # Visitantes veem só o tipo do erro; o traceback completo vai para o log do servidor.
 # Para depurar localmente: streamlit run app.py --client.showErrorDetails=full
 showErrorDetails = "type"
+
