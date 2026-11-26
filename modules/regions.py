@@ -11,10 +11,13 @@ V3.3.2:
 
 from __future__ import annotations
 
+import json
 import unicodedata
 
 import ee
 import streamlit as st
+
+from modules.user_area import UserArea
 
 
 # Países: LSIB (Departamento de Estado dos EUA). Estados e municípios: GAUL 2025 da FAO, que tem
@@ -47,15 +50,31 @@ def south_america_bbox():
     return ee.Geometry.Rectangle([-93, -60, -30, 15], proj="EPSG:4326", geodesic=False)
 
 
+USER_AREA_REGION = "Arquivo do usuário (SHP, KML, GeoJSON…)"
+
+
 def region_options() -> list[str]:
-    """Cinco áreas de interesse, na ordem exibida na interface."""
+    """Seis áreas de interesse, na ordem exibida na interface."""
     return [
         "América do Sul",
         "Países",
         "Estados do Brasil",
         "Cidades do Brasil",
         "Retângulo personalizado",
+        USER_AREA_REGION,
     ]
+
+
+def normalize_bounds(bounds):
+    """Retângulo vira tupla de floats (hashável); a área de arquivo (UserArea) passa como está."""
+    if isinstance(bounds, UserArea) or not bounds:
+        return bounds or None
+    return tuple(float(v) for v in bounds)
+
+
+def user_area_geometry(area: UserArea):
+    # Arestas planas em lon/lat, como o polígono aparece no SIG de origem.
+    return ee.Geometry(json.loads(area.geojson), "EPSG:4326", False)
 
 
 def normalize_region_name(name: str | None) -> str | None:
@@ -192,6 +211,11 @@ def get_region(
     state_name: str | None = None,
 ):
     name = normalize_region_name(name)
+    if name == USER_AREA_REGION:
+        if not isinstance(bounds, UserArea):
+            raise ValueError("Envie um arquivo de área antes de gerar o resultado.")
+        return user_area_geometry(bounds)
+
     if name == "América do Sul":
         # Mantém recorte leve para evitar erro de geometria grande no Earth Engine.
         return south_america_bbox()
@@ -217,7 +241,7 @@ def get_region(
     if name == "Itajubá - raio 20 km":
         return ee.Geometry.Point([-45.452, -22.425]).buffer(20000).bounds()
 
-    if name == "Retângulo personalizado" and bounds:
+    if name == "Retângulo personalizado" and bounds and not isinstance(bounds, UserArea):
         lon_min, lat_min, lon_max, lat_max = bounds
         return ee.Geometry.Rectangle([lon_min, lat_min, lon_max, lat_max], proj="EPSG:4326", geodesic=False)
 
@@ -230,6 +254,8 @@ def map_center(
     region=None,
 ):
     name = normalize_region_name(name)
+    if isinstance(bounds, UserArea):
+        return bounds.center_zoom()  # sem consulta ao GEE: centro e zoom saem do bbox local
     if name == "Retângulo personalizado" and bounds:
         lon_min, lat_min, lon_max, lat_max = bounds
         return [(lat_min + lat_max) / 2, (lon_min + lon_max) / 2], 6
@@ -255,8 +281,11 @@ def region_display_name(
     admin1_name: str | None = None,
     city_name: str | None = None,
     state_name: str | None = None,
+    area: UserArea | None = None,
 ) -> str:
     region_name = normalize_region_name(region_name)
+    if region_name == USER_AREA_REGION and isinstance(area, UserArea):
+        return area.label
     if region_name == "País da América do Sul" and country_name:
         return country_name
     if region_name == "Estado/Província/Departamento" and country_name and admin1_name:

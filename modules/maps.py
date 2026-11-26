@@ -15,6 +15,7 @@ from modules.products import (
 from modules.regions import (
     get_region,
     map_center,
+    normalize_bounds,
     south_america_countries_fc,
     admin1_fc,
     selected_city_fc,
@@ -102,7 +103,7 @@ GEOMETRY_TTL = "7d"
 def region_key(region_name: str, bounds=None, country_name: str | None = None,
                admin1_name: str | None = None, city_name: str | None = None) -> tuple:
     """Identifica a área inteira (tipo + retângulo/país/estado/município), não só o tipo de região."""
-    return (region_name, tuple(float(v) for v in bounds) if bounds else None, country_name, admin1_name, city_name)
+    return (region_name, normalize_bounds(bounds), country_name, admin1_name, city_name)
 
 
 def _region_from_key(key: tuple):

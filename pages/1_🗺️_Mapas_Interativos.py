@@ -78,7 +78,7 @@ if run:
                         map_object.location = [center["lat"], center["lng"]]
                         if isinstance(zoom, (int, float)):
                             map_object.options["zoom"] = int(zoom)
-                region_label = region_display_name(region_name, country_name, admin1_name, city_name)
+                region_label = region_display_name(region_name, country_name, admin1_name, city_name, area=bounds)
                 _, vis = _display_image_and_vis(product_name, image, region)
                 summary = cached_summary(product_name, start_text, end_text, area_key)
                 sequence = st.session_state.get("vigia_map_seq", 0) + 1

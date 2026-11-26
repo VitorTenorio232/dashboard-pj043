@@ -20,7 +20,7 @@ import streamlit as st
 from modules.products import (
     PRODUCTS, collection, freshness_token, period_image, reducer_for_product, _raw_collection,
 )
-from modules.regions import get_region, region_display_name
+from modules.regions import get_region, normalize_bounds, region_display_name
 
 BATCH_SIZE = 31
 SMALL_BATCH_SIZE = 4
@@ -118,7 +118,7 @@ def make_series(
         admin1_name=admin1_name,
         city_name=city_name,
     )
-    region_label = region_display_name(region_name, country_name, admin1_name, city_name)
+    region_label = region_display_name(region_name, country_name, admin1_name, city_name, area=bounds)
     processed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     intervals = series_intervals(product_name, start, end, freq)
 
@@ -185,7 +185,7 @@ def cached_series(
 
     ``data_processamento_utc`` continua sendo o instante do cálculo no GEE (não o da exibição).
     """
-    bounds = tuple(float(v) for v in bounds) if bounds else None
+    bounds = normalize_bounds(bounds)
     freshness = freshness_token(product_name, end.isoformat() if end else None)
     return _cached_series(product_name, start, end, region_name, freq, bounds, country_name, admin1_name,
                           city_name, freshness)

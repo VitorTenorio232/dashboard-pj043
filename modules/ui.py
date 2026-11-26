@@ -18,7 +18,10 @@ from modules.products import (
     latest_available_timestamp,
     safe_filename,
 )
-from modules.regions import south_america_country_names, admin1_names, admin2_names, region_options, normalize_region_name
+from modules.regions import (
+    USER_AREA_REGION, south_america_country_names, admin1_names, admin2_names, region_options, normalize_region_name,
+)
+from modules.user_area import ACCEPTED_EXTENSIONS, MAX_UPLOAD_BYTES, UserArea, UserAreaError, load_user_area
 
 LOGGER = logging.getLogger("vigia")
 
@@ -387,6 +390,47 @@ def custom_bounds_ui():
     return bounds
 
 
+@st.cache_data(ttl="1h", max_entries=32, show_spinner=False)
+def _cached_user_area(files: tuple[tuple[str, bytes], ...]) -> UserArea:
+    """Chave = nomes + conteúdo dos arquivos; o mesmo envio não é reprocessado a cada rerun.
+    Erros (UserAreaError) não entram no cache."""
+    return load_user_area(files)
+
+
+def user_area_ui() -> UserArea:
+    """Envio do arquivo da área; para a página com mensagem clara se o arquivo não servir."""
+    uploads = st.file_uploader(
+        "Arquivo da área de interesse",
+        type=ACCEPTED_EXTENSIONS,
+        accept_multiple_files=True,
+        help=(
+            "Shapefile (.zip com .shp/.shx/.dbf/.prj, ou os arquivos soltos), KML, KMZ, GeoJSON ou GeoPackage. "
+            "Polígonos em qualquer projeção com .prj/CRS; várias feições viram uma única área. "
+            f"Limite: {MAX_UPLOAD_BYTES // (1024 * 1024)} MB."
+        ),
+    )
+    if not uploads:
+        st.info("Envie o arquivo com o polígono da área para continuar.", icon="📎")
+        st.stop()
+    files = tuple((upload.name, upload.getvalue()) for upload in uploads)
+    try:
+        area = _cached_user_area(files)
+    except UserAreaError as exc:
+        st.error(str(exc))
+        st.stop()
+    except Exception as exc:
+        report_exception("Não foi possível ler o arquivo da área.", exc)
+        st.stop()
+    area_text = f"{area.area_km2:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    st.caption(
+        f"**{area.name}** · {area.source_format} · {area.n_features} feição(ões) · {area_text} km² · "
+        f"{area.n_vertices} vértices · projeção de origem: {area.source_crs}"
+    )
+    for note in area.warnings:
+        st.warning(note, icon="ℹ️")
+    return area
+
+
 def _names_or_stop(loader, *args, what: str) -> list[str]:
     """Lista administrativa do GEE; se o serviço falhar, avisa e para a página sem traceback.
 
@@ -461,6 +505,10 @@ def regional_selector_ui(region_name: str):
 
     elif normalized == "Retângulo personalizado":
         bounds = custom_bounds_ui()
+
+    elif normalized == USER_AREA_REGION:
+        # A área do arquivo segue pelo mesmo parâmetro do retângulo (bounds) até get_region.
+        bounds = user_area_ui()
 
     return bounds, country_name, admin1_name, city_name
 
