@@ -15,8 +15,11 @@ import time
 
 import ee
 import pandas as pd
+import streamlit as st
 
-from modules.products import PRODUCTS, collection, period_image, reducer_for_product, _raw_collection
+from modules.products import (
+    PRODUCTS, collection, freshness_token, period_image, reducer_for_product, _raw_collection,
+)
 from modules.regions import get_region, region_display_name
 
 BATCH_SIZE = 31
@@ -158,3 +161,31 @@ def make_series(
         )
 
     return pd.DataFrame(rows)
+
+
+@st.cache_data(ttl="1h", max_entries=64, show_spinner=False)
+def _cached_series(product_name, start, end, region_name, freq, bounds, country_name, admin1_name, city_name,
+                   freshness: str) -> pd.DataFrame:
+    return make_series(product_name, start, end, region_name, freq, bounds,
+                       country_name=country_name, admin1_name=admin1_name, city_name=city_name)
+
+
+def cached_series(
+    product_name: str,
+    start: date | None,
+    end: date | None,
+    region_name: str,
+    freq: str,
+    bounds=None,
+    country_name: str | None = None,
+    admin1_name: str | None = None,
+    city_name: str | None = None,
+) -> pd.DataFrame:
+    """make_series com cache: produto, período, frequência e a área completa entram na chave.
+
+    ``data_processamento_utc`` continua sendo o instante do cálculo no GEE (não o da exibição).
+    """
+    bounds = tuple(float(v) for v in bounds) if bounds else None
+    freshness = freshness_token(product_name, end.isoformat() if end else None)
+    return _cached_series(product_name, start, end, region_name, freq, bounds, country_name, admin1_name,
+                          city_name, freshness)

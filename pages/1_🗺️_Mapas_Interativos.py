@@ -3,15 +3,19 @@
 from __future__ import annotations
 import streamlit as st
 from modules.auth_gee import initialize_gee
-from modules.maps import BASEMAPS, make_map, visual_image_with_overlays, _display_image_and_vis, summarize_image
+from modules.maps import (
+    BASEMAPS, cached_image_count, cached_region_area_km2, cached_summary, make_map, region_key,
+    visual_image_with_overlays, _display_image_and_vis,
+)
 from modules.export_image import styled_map_bytes, png_to_jpeg
 from streamlit_folium import st_folium
-from modules.products import PRODUCTS, heavy_request_message, image_count, region_area_km2, safe_filename
-from modules.regions import default_overlays, get_region, overlay_options, region_display_name, region_options
+from modules.products import PRODUCTS, freshness_token, heavy_request_message, safe_filename
+from modules.regions import default_overlays, overlay_options, region_display_name, region_options
 from modules.ui import (
     date_range_ui, landcover_legend_ui, load_css, page_title,
     processing_time_warning, product_metadata, product_selector_ui,
-    map_legend_strip_html, query_dates, regional_selector_ui, sidebar_brand,
+    map_legend_strip_html, query_dates, regional_selector_ui, report_exception, selection_differs,
+    sidebar_brand,
 )
 
 load_css("assets/style.css")
@@ -45,22 +49,27 @@ if product.temporal and start is not None and end is not None and start > end:
     st.stop()
 
 st.caption(f"**Produto selecionado:** {product.label}  ·  **Banco:** {product.group}  ·  **Região:** {region_name}")
+start_text, end_text = query_dates(product, start, end)
+area_key = region_key(region_name, bounds, country_name, admin1_name, city_name)
+# Tudo o que muda o mapa e a prancha PNG/JPEG: usado para avisar quando o resultado exibido é antigo.
+current_selection = (product_name, area_key, start_text, end_text, tuple(overlays), basemap)
 if run:
     try:
         with st.spinner("Consultando o Google Earth Engine e preparando as camadas..."):
-            start_text, end_text = query_dates(product, start, end)
-            region = get_region(region_name, bounds, country_name=country_name, admin1_name=admin1_name, city_name=city_name)
             heavy = None
             if product.max_area_days and start is not None and end is not None:
-                heavy = heavy_request_message(product_name, region_area_km2(region), (end - start).days + 1)
-            n_images = 0 if heavy else image_count(product_name, start_text, end_text, region)
+                heavy = heavy_request_message(product_name, cached_region_area_km2(area_key), (end - start).days + 1)
+            n_images = 0 if heavy else cached_image_count(
+                product_name, start_text, end_text, area_key, freshness_token(product_name, end_text))
             if heavy:
                 st.warning(heavy, icon="🐢")
             elif n_images == 0:
                 st.warning("Nenhuma imagem disponível para esta combinação. Confira o período informado pela coleção.")
             else:
                 previous = st.session_state.get("vigia_map_result")
-                view = st.session_state.get("vigia_map_view") if previous and previous.get("region_name") == region_name else None
+                # Reaproveita o zoom/centro do usuário só se a área for exatamente a mesma (antes bastava o
+                # mesmo tipo de região: trocar MG por SP abria o mapa novo ainda centrado em MG).
+                view = st.session_state.get("vigia_map_view") if previous and previous.get("region_key") == area_key else None
                 map_object, image, region = make_map(product_name, start_text, end_text, region_name, bounds=bounds, overlays=overlays, basemap=basemap, country_name=country_name, admin1_name=admin1_name, city_name=city_name)
                 if view and isinstance(view.get("center"), dict):
                     center = view["center"]
@@ -71,11 +80,12 @@ if run:
                             map_object.options["zoom"] = int(zoom)
                 region_label = region_display_name(region_name, country_name, admin1_name, city_name)
                 _, vis = _display_image_and_vis(product_name, image, region)
-                summary = summarize_image(product_name, image, region)
+                summary = cached_summary(product_name, start_text, end_text, area_key)
                 sequence = st.session_state.get("vigia_map_seq", 0) + 1
                 st.session_state["vigia_map_seq"] = sequence
                 st.session_state["vigia_map_result"] = {
                     "seq": sequence, "map": map_object, "product": product_name, "region_name": region_name,
+                    "region_key": area_key, "selection": current_selection,
                     "region_label": region_label, "start": start_text, "end": end_text, "n_images": n_images,
                     "basemap": basemap, "overlays": overlays, "summary": summary,
                     # VIGIA V5.5.11: exportacao sob demanda — mapa nao depende do PNG.
@@ -85,8 +95,7 @@ if run:
                     "base_name": f"VIGIA_{safe_filename(product_name)}_{safe_filename(region_label)}_{start_text}_{end_text}",
                 }
     except Exception as exc:
-        st.error("Não foi possível gerar o mapa. Confira filtros, disponibilidade e permissões do Earth Engine.")
-        st.exception(exc)
+        report_exception("Não foi possível gerar o mapa. Confira filtros, disponibilidade e permissões do Earth Engine.", exc)
 
 left, right = st.columns([.73, .27], gap="large", vertical_alignment="top")
 with left:
@@ -96,8 +105,8 @@ with left:
         st.markdown(f"### {result_label}")
         date_label = "Produto estático" if not PRODUCTS[previous["product"]].temporal else f"{previous['start']} a {previous['end']}"
         st.caption(f"Área: **{previous['region_label']}**  ·  Período: **{date_label}**  ·  Cenas: **{previous['n_images']}**")
-        if previous["product"] != product_name or previous["region_name"] != region_name:
-            st.info("Você alterou os filtros. O mapa abaixo ainda representa a última análise gerada; clique em **Gerar mapa** para atualizar.")
+        if selection_differs(previous, current_selection):
+            st.info("Você alterou os filtros. O mapa abaixo e os downloads PNG/JPEG ainda representam a última análise gerada; clique em **Gerar mapa** para atualizar.")
         view_data = st_folium(previous["map"], height=670, use_container_width=True, returned_objects=["center", "zoom"], key=f"vigia_map_canvas_{previous.get('seq', 0)}")
         scale_lat, scale_zoom = previous["map"].location[0], previous["map"].options.get("zoom", 4)
         if view_data and isinstance(view_data, dict):
@@ -180,8 +189,7 @@ with left:
                                 "selecione uma area/período menor."
                             )
                         else:
-                            st.error("Não foi possível preparar o PNG/JPEG. O mapa interativo permanece disponível.")
-                            st.exception(exc)
+                            report_exception("Não foi possível preparar o PNG/JPEG. O mapa interativo permanece disponível.", exc)
                 if previous.get("png_bytes"):
                     st.download_button(
                         "Baixar PNG", previous["png_bytes"],

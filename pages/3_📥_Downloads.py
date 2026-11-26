@@ -6,16 +6,20 @@ import json
 import pandas as pd
 import streamlit as st
 from modules.auth_gee import initialize_gee
-from modules.maps import BASEMAPS, make_map, visual_image_with_overlays, _display_image_and_vis, summarize_image
+from modules.maps import (
+    BASEMAPS, cached_image_count, cached_region_area_km2, cached_summary, make_map, region_key,
+    visual_image_with_overlays, _display_image_and_vis,
+)
 from modules.export_image import (
     GEOTIFF_LIMIT_MB, geotiff_size_estimate, png_to_jpeg, request_size_from_error,
     styled_map_bytes, suggested_scale_for_size,
 )
-from modules.products import PRODUCTS, heavy_request_message, image_count, period_image, region_area_km2, safe_filename
+from modules.products import PRODUCTS, freshness_token, heavy_request_message, period_image, safe_filename
 from modules.regions import default_overlays, get_region, overlay_options, region_display_name, region_options
 from modules.ui import (
     date_range_ui, landcover_legend_ui, load_css, page_title, processing_time_warning,
-    product_metadata, product_selector_ui, query_dates, regional_selector_ui, sidebar_brand,
+    product_metadata, product_selector_ui, query_dates, regional_selector_ui, report_exception,
+    selection_differs, sidebar_brand,
 )
 
 load_css("assets/style.css")
@@ -51,6 +55,10 @@ if product.temporal and start is not None and end is not None and start > end:
     st.error("A data inicial precisa ser anterior ou igual à data final.")
     st.stop()
 
+area_key = region_key(region_name, bounds, country_name, admin1_name, city_name)
+current_selection = (product_name, area_key, start, end, int(scale), tuple(overlays), basemap,
+                     want_tif, want_png, want_jpeg, want_csv, want_json, want_html)
+
 left, right = st.columns([0.68, 0.32], gap="large")
 with right:
     product_metadata(product)
@@ -67,18 +75,19 @@ with left:
                 start_text, end_text = query_dates(product, start, end)
                 region = get_region(region_name, bounds, country_name=country_name, admin1_name=admin1_name, city_name=city_name)
                 if product.max_area_days and start is not None and end is not None:
-                    heavy = heavy_request_message(product_name, region_area_km2(region), (end - start).days + 1)
+                    heavy = heavy_request_message(product_name, cached_region_area_km2(area_key), (end - start).days + 1)
                     if heavy:
                         st.warning(heavy, icon="🐢")
                         st.stop()
-                n_images = image_count(product_name, start_text, end_text, region)
+                n_images = cached_image_count(product_name, start_text, end_text, area_key,
+                                              freshness_token(product_name, end_text))
                 if n_images == 0:
                     st.warning("Nenhuma imagem foi encontrada para os filtros selecionados.")
                     st.stop()
                 image = period_image(product_name, start_text, end_text, region)
                 region_bounds = region.bounds(maxError=1000).getInfo()["coordinates"]
                 region_label = region_display_name(region_name, country_name, admin1_name, city_name)
-                summary = summarize_image(product_name, image, region)
+                summary = cached_summary(product_name, start_text, end_text, area_key)
                 date_token = f"{start_text}_{end_text}" if product.temporal else "estatico"
                 base_name = f"VIGIA_{safe_filename(product_name)}_{safe_filename(region_label)}_{date_token}_{safe_filename(product.statistic)}"
                 metadata = {
@@ -143,11 +152,10 @@ with left:
             st.session_state["vigia_downloads"] = {
                 "base_name": base_name, "product": product_name, "links": links, "files": file_payloads,
                 "html": html_bytes, "metadata": metadata, "notes": notes,
-                "csv": want_csv, "json": want_json,
+                "csv": want_csv, "json": want_json, "selection": current_selection,
             }
         except Exception as exc:
-            st.error("Não foi possível gerar os downloads com os filtros selecionados.")
-            st.exception(exc)
+            report_exception("Não foi possível gerar os downloads com os filtros selecionados.", exc)
 
     result = st.session_state.get("vigia_downloads")
     if not result:
@@ -156,6 +164,9 @@ with left:
         base_name, metadata = result["base_name"], result["metadata"]
         metadata_df = pd.DataFrame([metadata])
         st.success(f"Arquivos prontos: **{PRODUCTS[result['product']].label}** — {metadata['regiao']}.")
+        if selection_differs(result, current_selection):
+            st.info("Você alterou os filtros. Os arquivos abaixo ainda correspondem à última geração; "
+                    "clique em **Gerar opções de download** para atualizar.")
         for note in result["notes"]:
             st.warning(note)
         c1, c2, c3 = st.columns(3)

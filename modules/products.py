@@ -915,6 +915,27 @@ def latest_available_timestamp(product_name: str) -> datetime | None:
     return datetime.fromtimestamp(milliseconds / 1000.0, tz=timezone.utc)
 
 
+# Períodos que terminam nestes últimos dias ainda podem receber cenas novas (NRT, ingestão atrasada).
+RECENT_DAYS = 3
+RECENT_BUCKET_SECONDS = 15 * 60
+
+
+def freshness_token(product_name: str, end_inclusive: str | None, now: datetime | None = None) -> str:
+    """Parte da chave de cache que expira consultas recentes.
+
+    Produtos estáticos e períodos encerrados há mais de RECENT_DAYS dias não mudam entre consultas;
+    períodos recentes recebem um token que muda a cada 15 min, para não servir resultado sem as cenas
+    que chegaram depois (ex.: GOES a cada 10 min, FIRMS NRT).
+    """
+    product = PRODUCTS[product_name]
+    if not product.temporal or not end_inclusive:
+        return "estatico"
+    now = now or datetime.now(timezone.utc)
+    if date.fromisoformat(end_inclusive) < now.date() - timedelta(days=RECENT_DAYS):
+        return "historico"
+    return f"recente-{int(now.timestamp() // RECENT_BUCKET_SECONDS)}"
+
+
 def _exclusive_end(end_inclusive: str) -> str:
     return (date.fromisoformat(end_inclusive) + timedelta(days=1)).isoformat()
 

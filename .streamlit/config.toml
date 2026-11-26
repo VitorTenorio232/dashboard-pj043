@@ -8,3 +8,8 @@ backgroundColor = "#fbfcf9"
 secondaryBackgroundColor = "#f4f8f5"
 textColor = "#132c38"
 font = "sans serif"
+
+[client]
+# Visitantes veem só o tipo do erro; o traceback completo vai para o log do servidor.
+# Para depurar localmente: streamlit run app.py --client.showErrorDetails=full
+showErrorDetails = "type"

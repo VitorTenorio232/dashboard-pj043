@@ -9,6 +9,7 @@ from math import atan, ceil, cos, floor, log, log10, pi, radians, sinh, tan
 from urllib.request import Request, urlopen
 
 import ee
+import streamlit as st
 
 from modules.products import PRODUCTS, LANDCOVER_PALETTE
 
@@ -61,6 +62,13 @@ def _download_bytes(url: str) -> bytes:
     req = Request(url, headers={"User-Agent": "VIGIA/1.0"})
     with urlopen(req, timeout=45) as response:
         return response.read()
+
+
+@st.cache_data(ttl="1d", max_entries=2048, show_spinner=False)
+def _basemap_tile_bytes(url: str) -> bytes:
+    """Tiles do mapa base mudam raramente; o cache evita baixar os mesmos ~30 tiles a cada prancha
+    (e segue a política de uso do OpenStreetMap, que pede cache no cliente)."""
+    return _download_bytes(url)
 
 
 def _download_image(url: str, mode: str = 'RGBA'):
@@ -195,7 +203,7 @@ def _fetch_basemap(basemap: str, bbox: tuple[float,float,float,float], width_px:
         raise RuntimeError('Extensão/zoom incompatível com exportação rápida de tiles.')
     def fetch(task):
         tx,ty,url=task
-        try:return tx,ty,_download_image(url,mode='RGB')
+        try:return tx,ty,Image.open(BytesIO(_basemap_tile_bytes(url))).convert('RGB')
         except Exception:return tx,ty,None
     downloaded=0
     with ThreadPoolExecutor(max_workers=8) as pool:
